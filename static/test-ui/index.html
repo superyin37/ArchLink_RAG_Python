@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG 测试平台</title>
+  <script src="vendor/vue.global.prod.js"></script>
+  <script src="vendor/tailwind.js"></script>
+  <style>
+    [v-cloak] { display: none; }
+    .chat-bubble-user { background: #2563eb; color: #fff; border-radius: 18px 18px 4px 18px; }
+    .chat-bubble-ai   { background: #f1f5f9; color: #1e293b; border-radius: 18px 18px 18px 4px; }
+    .score-bar { height: 6px; border-radius: 3px; background: #e2e8f0; }
+    .score-fill { height: 6px; border-radius: 3px; background: #3b82f6; transition: width 0.4s; }
+    .score-fill-green  { background: #22c55e; }
+    .score-fill-orange { background: #f59e0b; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .thinking-block { background: #fefce8; border-left: 3px solid #eab308; padding: 8px 12px; font-size: 0.8rem; color: #713f12; border-radius: 4px; }
+    .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; }
+    .chunk-card { border-left: 3px solid #3b82f6; }
+    .chunk-card-ms { border-left-color: #22c55e; }
+    .chunk-card-hy { border-left-color: #a855f7; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-gray-50 text-slate-800 min-h-screen">
+
+<div id="app" v-cloak class="flex flex-col min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">R</div>
+      <span class="font-semibold text-slate-800 text-lg">RAG 测试平台</span>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <span class="text-slate-500">API:</span>
+      <input v-model="apiBase" class="border border-slate-300 rounded px-2 py-1 text-sm w-52 focus:outline-none focus:border-blue-400" />
+      <span class="text-slate-500">Token:</span>
+      <input v-model="authToken" type="password" placeholder="可留空" class="border border-slate-300 rounded px-2 py-1 text-sm w-36 focus:outline-none focus:border-blue-400" />
+      <button @click="reload" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">刷新数据</button>
+      <span :class="healthColor" class="text-xs font-medium px-2 py-1 rounded-full border">{{ healthText }}</span>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="bg-white border-b border-slate-200 px-6 flex gap-6 text-sm font-medium">
+    <button v-for="t in tabs" :key="t.key"
+      @click="activeTab = t.key"
+      :class="['py-3 px-1 border-b-2 transition-colors', activeTab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+      {{ t.label }}
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="flex-1 p-6">
+
+    <!-- ===== TAB: SEARCH ===== -->
+    <div v-show="activeTab === 'search'">
+      <div class="max-w-7xl mx-auto">
+        <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5 shadow-sm">
+          <h2 class="font-semibold text-slate-700 mb-4">搜索对比测试</h2>
+          <div class="flex flex-wrap gap-3 items-end">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">知识库</label>
+              <select v-model="searchKbId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-48">
+                <option :value="null" disabled>请选择知识库</option>
+                <option v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }} (ID:{{ kb.id }})</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-64">
+              <label class="text-xs text-slate-500">查询语句</label>
+              <input v-model="searchQuery" @keyup.enter="doSearch"
+                placeholder="输入查询内容，按 Enter 搜索..."
+                class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">Top K</label>
+              <input v-model.number="searchTopK" type="number" min="1" max="20"
+                class="border border-slate-300 rounded px-3 py-2 text-sm w-20 focus:outline-none focus:border-blue-400" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">向量阈值</label>
+              <input v-model.number="searchThreshold" type="number" min="0" max="1" step="0.05"
+                class="border border-slate-300 rounded px-3 py-2 text-sm w-24 focus:outline-none focus:border-blue-400" />
+            </div>
+            <button @click="doSearch" :disabled="searchLoading || !searchKbId || !searchQuery"
+              class="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              {{ searchLoading ? '搜索中...' : '搜索' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Search Results: 3 columns -->
+        <div v-if="searchResults" class="grid grid-cols-3 gap-4">
+          <!-- Vector -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center justify-between">
+              <span class="font-semibold text-blue-700 text-sm">向量搜索</span>
+              <span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">{{ (searchResults.vector || []).length }} 条</span>
+            </div>
+            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
+              <div v-if="!searchResults.vector || searchResults.vector.length === 0" class="text-slate-400 text-sm text-center py-8">无结果</div>
+              <div v-for="(item, i) in searchResults.vector" :key="i"
+                class="chunk-card bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                  <span class="font-semibold text-blue-600">{{ formatScore(item.score) }}</span>
+                </div>
+                <div class="score-bar mb-2"><div class="score-fill" :style="{width: (item.score * 100) + '%'}"></div></div>
+                <div class="text-slate-600 line-clamp-6 leading-relaxed">{{ item.content }}</div>
+                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">
+                  {{ item.doc_name || item.document_name }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meilisearch -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-green-50 border-b border-green-100 px-4 py-3 flex items-center justify-between">
+              <span class="font-semibold text-green-700 text-sm">全文搜索</span>
+              <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">{{ (searchResults.meilisearch || []).length }} 条</span>
+            </div>
+            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
+              <div v-if="!searchResults.meilisearch || searchResults.meilisearch.length === 0" class="text-slate-400 text-sm text-center py-8">无结果</div>
+              <div v-for="(item, i) in searchResults.meilisearch" :key="i"
+                class="chunk-card chunk-card-ms bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                  <span class="font-semibold text-green-600">{{ formatScore(item.score) }}</span>
+                </div>
+                <div class="score-bar mb-2"><div class="score-fill score-fill-green" :style="{width: Math.min(item.score * 100, 100) + '%'}"></div></div>
+                <div class="text-slate-600 line-clamp-6 leading-relaxed">{{ item.content }}</div>
+                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">
+                  {{ item.doc_name || item.document_name }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hybrid -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-purple-50 border-b border-purple-100 px-4 py-3 flex items-center justify-between">
+              <span class="font-semibold text-purple-700 text-sm">混合搜索</span>
+              <span class="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{{ (searchResults.hybrid || []).length }} 条</span>
+            </div>
+            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
+              <div v-if="!searchResults.hybrid || searchResults.hybrid.length === 0" class="text-slate-400 text-sm text-center py-8">无结果</div>
+              <div v-for="(item, i) in searchResults.hybrid" :key="i"
+                class="chunk-card chunk-card-hy bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                  <span class="font-semibold text-purple-600">{{ formatScore(item.score) }}</span>
+                </div>
+                <div class="score-bar mb-2"><div class="score-fill" style="background:#a855f7" :style="{width: (item.score * 100) + '%'}"></div></div>
+                <div class="text-slate-600 line-clamp-6 leading-relaxed">{{ item.content }}</div>
+                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">
+                  {{ item.doc_name || item.document_name }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div v-if="!searchResults && !searchLoading" class="text-center py-20 text-slate-400">
+          选择知识库，输入查询内容，点击搜索查看三种搜索方式的对比结果
+        </div>
+        <div v-if="searchLoading" class="text-center py-20 text-slate-400">
+          <div class="inline-block w-8 h-8 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+          <div>搜索中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: CHAT ===== -->
+    <div v-show="activeTab === 'chat'" class="max-w-5xl mx-auto flex flex-col h-full">
+      <!-- Config bar -->
+      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-sm flex flex-wrap gap-3 items-end">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-500">知识库</label>
+          <select v-model="chatKbId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-44">
+            <option :value="null" disabled>请选择知识库</option>
+            <option v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }} (ID:{{ kb.id }})</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-500">模型</label>
+          <select v-model="chatModelId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-52">
+            <option value="" disabled>请选择模型</option>
+            <option v-for="m in models" :key="m.model_id" :value="m.model_id">{{ m.name || m.model_id }}</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-500">Top K</label>
+          <input v-model.number="chatTopK" type="number" min="1" max="30"
+            class="border border-slate-300 rounded px-3 py-2 text-sm w-20 focus:outline-none focus:border-blue-400" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-500">阈值</label>
+          <input v-model.number="chatThreshold" type="number" min="0" max="1" step="0.05"
+            class="border border-slate-300 rounded px-3 py-2 text-sm w-24 focus:outline-none focus:border-blue-400" />
+        </div>
+        <button @click="clearChat" class="ml-auto text-sm text-slate-500 hover:text-red-500 transition-colors px-3 py-2 border border-slate-200 rounded hover:border-red-300">
+          清空对话
+        </button>
+      </div>
+
+      <!-- Chat area -->
+      <div class="flex gap-4 flex-1" style="min-height: 0;">
+        <!-- Messages -->
+        <div class="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div ref="chatScroll" class="flex-1 overflow-y-auto p-4 space-y-4" style="max-height: 60vh;">
+            <div v-if="chatMessages.length === 0" class="text-center text-slate-400 py-16">
+              选择知识库和模型，开始 RAG 对话测试
+            </div>
+            <div v-for="(msg, i) in chatMessages" :key="i"
+              :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
+              <div class="max-w-xl">
+                <!-- Thinking block -->
+                <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block mb-2 text-xs">
+                  <div class="font-semibold mb-1 text-yellow-700">思维链</div>
+                  <pre class="text-yellow-800 text-xs">{{ msg.thinking }}</pre>
+                </div>
+                <!-- Bubble -->
+                <div :class="['px-4 py-3 text-sm leading-relaxed', msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai']">
+                  <pre v-if="msg.role === 'assistant'" class="font-sans text-sm leading-relaxed">{{ msg.content || '...' }}</pre>
+                  <span v-else>{{ msg.content }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input area -->
+          <div class="border-t border-slate-200 p-3 flex gap-2">
+            <textarea v-model="chatInput" @keydown.enter.exact.prevent="sendMessage"
+              placeholder="输入问题... (Enter 发送，Shift+Enter 换行)"
+              rows="2"
+              class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-blue-400"
+              :disabled="chatLoading"></textarea>
+            <button @click="sendMessage"
+              :disabled="chatLoading || !chatInput.trim() || !chatKbId || !chatModelId"
+              class="bg-blue-600 text-white px-4 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              {{ chatLoading ? '...' : '发送' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- RAG Chunks panel -->
+        <div class="w-72 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+          <div class="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+            <span class="font-semibold text-sm text-slate-700">RAG 上下文</span>
+            <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{{ ragChunks.length }} chunks</span>
+          </div>
+          <div class="flex-1 overflow-y-auto p-3 space-y-2" style="max-height: 60vh;">
+            <div v-if="ragChunks.length === 0" class="text-slate-400 text-xs text-center py-8">
+              发送消息后显示检索到的上下文片段
+            </div>
+            <div v-for="(chunk, i) in ragChunks" :key="i"
+              class="chunk-card bg-slate-50 rounded-lg p-2 text-xs border border-slate-100">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                <span class="text-blue-500 font-semibold">{{ formatScore(chunk.score) }}</span>
+              </div>
+              <div class="text-slate-600 leading-relaxed line-clamp-4">{{ chunk.content }}</div>
+              <div v-if="chunk.doc_name || chunk.document_name" class="mt-1 text-slate-400 truncate text-xs">
+                {{ chunk.doc_name || chunk.document_name }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: KB OVERVIEW ===== -->
+    <div v-show="activeTab === 'kb'" class="max-w-5xl mx-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-slate-700">知识库概览</h2>
+        <button @click="loadKbList" class="text-sm text-blue-600 hover:underline">刷新</button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4">
+        <div v-if="kbs.length === 0" class="text-center py-16 text-slate-400">暂无知识库数据</div>
+        <div v-for="kb in kbs" :key="kb.id"
+          class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-shadow">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="font-semibold text-slate-800">{{ kb.name }}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                  :class="kb.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'">
+                  {{ kb.status }}
+                </span>
+              </div>
+              <div class="text-sm text-slate-500">{{ kb.description || '无描述' }}</div>
+            </div>
+            <div class="text-right text-xs text-slate-400">
+              <div>ID: {{ kb.id }}</div>
+              <div>{{ kb.embedding_model }}</div>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div v-if="kbStats[kb.id]" class="grid grid-cols-4 gap-3 mt-3">
+            <div class="bg-blue-50 rounded-lg p-2 text-center">
+              <div class="text-xl font-bold text-blue-600">{{ kbStats[kb.id].doc_count }}</div>
+              <div class="text-xs text-blue-500 mt-0.5">文档</div>
+            </div>
+            <div class="bg-purple-50 rounded-lg p-2 text-center">
+              <div class="text-xl font-bold text-purple-600">{{ kbStats[kb.id].chunk_count }}</div>
+              <div class="text-xs text-purple-500 mt-0.5">Chunks</div>
+            </div>
+            <div class="bg-green-50 rounded-lg p-2 text-center">
+              <div class="text-xl font-bold text-green-600">{{ formatChars(kbStats[kb.id].total_chars) }}</div>
+              <div class="text-xs text-green-500 mt-0.5">字符数</div>
+            </div>
+            <div class="bg-orange-50 rounded-lg p-2 text-center">
+              <div class="text-xl font-bold text-orange-600">{{ kbStats[kb.id].dimension }}</div>
+              <div class="text-xs text-orange-500 mt-0.5">维度</div>
+            </div>
+          </div>
+          <div v-else class="mt-3">
+            <button @click="loadKbStats(kb.id)" class="text-xs text-blue-600 hover:underline">加载统计数据</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const { createApp, ref, reactive, nextTick, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const apiBase = ref(localStorage.getItem('rag_api_base') || window.location.origin);
+    const authToken = ref(localStorage.getItem('rag_auth_token') || '');
+
+    const tabs = [
+      { key: 'search', label: '搜索对比' },
+      { key: 'chat',   label: 'RAG 对话' },
+      { key: 'kb',     label: 'KB 概览' },
+    ];
+    const activeTab = ref('search');
+
+    const healthText = ref('检测中');
+    const healthColor = ref('text-slate-400 border-slate-200');
+
+    // Shared data
+    const kbs = ref([]);
+    const models = ref([]);
+
+    // Search state
+    const searchKbId = ref(null);
+    const searchQuery = ref('');
+    const searchTopK = ref(5);
+    const searchThreshold = ref(0.0);
+    const searchLoading = ref(false);
+    const searchResults = ref(null);
+
+    // Chat state
+    const chatKbId = ref(null);
+    const chatModelId = ref('');
+    const chatTopK = ref(10);
+    const chatThreshold = ref(0.0);
+    const chatMessages = ref([]);
+    const chatInput = ref('');
+    const chatLoading = ref(false);
+    const chatScroll = ref(null);
+    const conversationId = ref(null);
+    const ragChunks = ref([]);
+
+    // KB stats
+    const kbStats = ref({});
+
+    // ---- API helpers ----
+    const buildHeaders = () => {
+      const h = { 'Content-Type': 'application/json' };
+      if (authToken.value) h['token'] = authToken.value;
+      return h;
+    };
+
+    const apiFetch = async (path, options = {}) => {
+      const url = apiBase.value + path;
+      const res = await fetch(url, {
+        ...options,
+        headers: { ...buildHeaders(), ...(options.headers || {}) },
+      });
+      return res.json();
+    };
+
+    // ---- Health check ----
+    const checkHealth = async () => {
+      try {
+        const data = await apiFetch('/api/health');
+        if (data.status === 'ok') {
+          const parts = [];
+          if (data.db) parts.push('DB');
+          if (data.redis) parts.push('Redis');
+          if (data.meilisearch) parts.push('MS');
+          healthText.value = parts.join(' · ') + ' OK';
+          healthColor.value = 'text-green-600 border-green-200 bg-green-50';
+        } else {
+          healthText.value = '服务异常';
+          healthColor.value = 'text-red-500 border-red-200 bg-red-50';
+        }
+      } catch {
+        healthText.value = '连接失败';
+        healthColor.value = 'text-red-500 border-red-200 bg-red-50';
+      }
+    };
+
+    // ---- Load KBs ----
+    const loadKbList = async () => {
+      try {
+        const res = await apiFetch('/api/rag/kb?page=1&size=100');
+        kbs.value = res.data?.list || [];
+      } catch (e) {
+        console.error('Failed to load KBs', e);
+      }
+    };
+
+    // ---- Load Models ----
+    const loadModels = async () => {
+      try {
+        const res = await apiFetch('/api/llm/model?page=1&size=100');
+        models.value = res.data?.list || [];
+      } catch (e) {
+        console.error('Failed to load models', e);
+      }
+    };
+
+    // ---- KB Stats ----
+    const loadKbStats = async (kbId) => {
+      try {
+        const res = await apiFetch(`/api/rag/kb/${kbId}/stats`);
+        if (res.data) {
+          kbStats.value = { ...kbStats.value, [kbId]: res.data };
+        }
+      } catch (e) {
+        console.error('Failed to load KB stats', e);
+      }
+    };
+
+    const loadAllKbStats = async () => {
+      await Promise.all(kbs.value.map(kb => loadKbStats(kb.id)));
+    };
+
+    // ---- Search ----
+    const doSearch = async () => {
+      if (!searchKbId.value || !searchQuery.value.trim()) return;
+      searchLoading.value = true;
+      searchResults.value = null;
+      try {
+        const res = await apiFetch(`/api/rag/meilisearch/compare/${searchKbId.value}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            query: searchQuery.value.trim(),
+            top_k: searchTopK.value,
+            vector_threshold: searchThreshold.value,
+          }),
+        });
+        searchResults.value = res.data || null;
+      } catch (e) {
+        console.error('Search failed', e);
+        alert('搜索失败: ' + e.message);
+      } finally {
+        searchLoading.value = false;
+      }
+    };
+
+    // ---- Chat ----
+    const scrollToBottom = () => {
+      nextTick(() => {
+        if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight;
+      });
+    };
+
+    const clearChat = () => {
+      chatMessages.value = [];
+      ragChunks.value = [];
+      conversationId.value = null;
+    };
+
+    const sendMessage = async () => {
+      const text = chatInput.value.trim();
+      if (!text || !chatKbId.value || !chatModelId.value || chatLoading.value) return;
+
+      chatInput.value = '';
+      chatMessages.value.push({ role: 'user', content: text });
+      scrollToBottom();
+
+      const assistantMsg = reactive({ role: 'assistant', content: '', thinking: '' });
+      chatMessages.value.push(assistantMsg);
+      ragChunks.value = [];
+      chatLoading.value = true;
+
+      try {
+        const response = await fetch(apiBase.value + '/api/ppt/stream/rag-query', {
+          method: 'POST',
+          headers: buildHeaders(),
+          body: JSON.stringify({
+            conversation_id: conversationId.value || undefined,
+            message: text,
+            kb_ids: [chatKbId.value],
+            model_id: chatModelId.value,
+            enhance_config: { strategies: ['siblings', 'children'], max_depth: 1 },
+            limit_config: { max_chunks: chatTopK.value },
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          assistantMsg.content = `[HTTP ${response.status}] ${errText}`;
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete last line
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw || raw === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed.type === 'metadata') {
+                conversationId.value = parsed.conversation_id;
+              } else if (parsed.type === 'thinking') {
+                assistantMsg.thinking += parsed.content;
+                scrollToBottom();
+              } else if (parsed.type === 'search_results') {
+                ragChunks.value = parsed.chunks || [];
+              } else if (parsed.type === 'error') {
+                assistantMsg.content += `\n[错误: ${parsed.message}]`;
+              }
+              // other typed events (thinking_complete, case_selection) ignored
+            } catch {
+              // Plain text token
+              assistantMsg.content += raw;
+              scrollToBottom();
+            }
+          }
+        }
+      } catch (e) {
+        assistantMsg.content = '[请求失败] ' + e.message;
+      } finally {
+        chatLoading.value = false;
+        scrollToBottom();
+      }
+    };
+
+    // ---- Utils ----
+    const formatScore = (v) => {
+      if (v == null) return '-';
+      return Number(v).toFixed(4);
+    };
+
+    const formatChars = (n) => {
+      if (!n) return '0';
+      if (n >= 10000) return (n / 10000).toFixed(1) + 'w';
+      return n.toString();
+    };
+
+    const reload = async () => {
+      localStorage.setItem('rag_api_base', apiBase.value);
+      localStorage.setItem('rag_auth_token', authToken.value);
+      await Promise.all([checkHealth(), loadKbList(), loadModels()]);
+      if (activeTab.value === 'kb') await loadAllKbStats();
+    };
+
+    // Load KB stats when switching to KB tab
+    const watchTab = (newTab) => {
+      if (newTab === 'kb' && kbs.value.length > 0) {
+        loadAllKbStats();
+      }
+    };
+
+    // Watch activeTab changes
+    const origActiveTab = activeTab;
+    const setActiveTab = (v) => {
+      activeTab.value = v;
+      watchTab(v);
+    };
+
+    onMounted(async () => {
+      await Promise.all([checkHealth(), loadKbList(), loadModels()]);
+    });
+
+    return {
+      apiBase, authToken, tabs,
+      activeTab, healthText, healthColor,
+      kbs, models,
+      searchKbId, searchQuery, searchTopK, searchThreshold, searchLoading, searchResults,
+      doSearch,
+      chatKbId, chatModelId, chatTopK, chatThreshold,
+      chatMessages, chatInput, chatLoading, chatScroll,
+      ragChunks, sendMessage, clearChat,
+      kbStats, loadKbStats, loadKbList,
+      formatScore, formatChars, reload,
+    };
+  },
+
+  watch: {
+    activeTab(v) {
+      if (v === 'kb' && this.kbs.length > 0) {
+        this.kbs.forEach(kb => this.loadKbStats(kb.id));
+      }
+    },
+  },
+}).mount('#app');
+</script>
+
+</body>
+</html>

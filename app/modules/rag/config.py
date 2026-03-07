@@ -1,0 +1,50 @@
+from app.config import settings
+
+
+class RAGConfig:
+    # Vector Search
+    SEARCH_DEFAULT_TOP_K = 5
+    SEARCH_DEFAULT_THRESHOLD = 0.3
+    SEARCH_MAX_TOP_K = 20
+
+    # Retrieval Enhancement
+    ENHANCE_DEFAULT_STRATEGIES = ["siblings", "children"]
+    ENHANCE_DEFAULT_MAX_DEPTH = 1
+    ENHANCE_MIN_SIBLING_LEVEL = 2
+
+    # Context Assembly
+    CONTEXT_SEPARATOR = "\n\n---\n\n"
+    CONTEXT_INCLUDE_HEADING = True
+    CONTEXT_MAX_LENGTH = 8000
+    CONTEXT_MAX_CHUNK_LENGTH = 2000
+
+    # Result Limiting
+    LIMIT_MAX_CHUNKS = 30
+    LIMIT_MAX_CONTEXT_TOKENS = 12000
+    LIMIT_HIT_RATIO = 0.4
+    LIMIT_GRAPH_RATIO = 0.4
+    LIMIT_MIN_HITS = 3
+    LIMIT_MIN_GRAPH = 10
+    LIMIT_AVG_CHUNK_TOKENS = 200
+
+    # Deduplication
+    DEDUP_CONTENT_SIMILARITY = 0.85
+    DEDUP_MIN_CONTENT_LENGTH = 50
+    DEDUP_ENABLE_CONTENT = True
+    DEDUP_ENABLE_PARENT_CHILD = True
+
+    # Meilisearch
+    MEILISEARCH_ENABLED: bool = settings.MEILISEARCH_ENABLED
+    MEILISEARCH_HOST: str = settings.MEILISEARCH_HOST
+    MEILISEARCH_API_KEY: str = settings.MEILISEARCH_API_KEY
+    HYBRID_VECTOR_WEIGHT = 0.7
+    HYBRID_FULLTEXT_WEIGHT = 0.3
+    FUSION_STRATEGY = "rrf"
+
+    # History
+    MAX_HISTORY_ROUNDS = 5
+    MAX_HISTORY_MESSAGES = 10
+
+    # LLM defaults for RAG
+    LLM_DEFAULT_TEMPERATURE = 0.7
+    LLM_DEFAULT_MAX_TOKENS = 4000

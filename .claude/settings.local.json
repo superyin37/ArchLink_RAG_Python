@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql -u root -prag_dev_2024 -e \"SELECT 1;\")",
+      "Bash(redis-cli ping)",
+      "Bash(docker ps --format \"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}\")",
+      "Bash(pip show fastapi uvicorn)",
+      "Bash(python3 -m uvicorn app.main:app --host 0.0.0.0 --port 4001)",
+      "Bash(python3 -c \"import uvicorn; print\\(uvicorn.__version__\\)\")",
+      "Bash(curl -s http://localhost:4001/health)",
+      "Bash(curl -s http://localhost:4001/api/health)",
+      "Bash(curl -s -X POST http://localhost:4001/api/rag/kb -H \"Content-Type: application/json\" -d '{\"\"name\"\":\"\"Python 技术文档\"\",\"\"description\"\":\"\"测试用知识库\"\",\"\"embedding_model\"\":\"\"doubao\"\"}')",
+      "Bash(curl -s -X POST http://localhost:4001/api/rag/kb -H \"Content-Type: application/json\" -d \"{\"\"name\"\":\"\"Python \\\\u6280\\\\u672f\\\\u6587\\\\u6863\"\",\"\"description\"\":\"\"\\\\u6d4b\\\\u8bd5\\\\u7528\\\\u77e5\\\\u8bc6\\\\u5e93\"\",\"\"embedding_model\"\":\"\"doubao\"\"}\")",
+      "Bash(python -m json.tool)"
+    ]
+  }
+}
