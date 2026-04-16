@@ -117,16 +117,66 @@ class RagContextBuilder:
 
         return "\n\n".join(parts)
 
-    async def build_system_prompt(self, context: str, kb_name: str = "Knowledge Base") -> str:
-        return (
-            f"You are a helpful assistant. Answer based on the following knowledge base content.\n\n"
-            f"Knowledge Base: {kb_name}\n\n"
+    # Language instruction appended to the system prompt when the user's language
+    # is not Chinese. The LLM reads Chinese context but responds in the target language.
+    _LANGUAGE_INSTRUCTIONS: dict[str, str] = {
+        "en-US": "Please respond in English.",
+        "ja-JP": "Please respond in Japanese.",
+        "ko-KR": "Please respond in Korean.",
+        "fr-FR": "Please respond in French.",
+        "de-DE": "Please respond in German.",
+        "es-ES": "Please respond in Spanish.",
+    }
+
+    async def build_system_prompt(
+        self, context: str, kb_name: str = "Knowledge Base", language: str = "zh-CN"
+    ) -> str:
+        prompt = (
+            f"你是一个专业的建筑规范顾问，精通中国建筑设计规范、标准和法规。\n\n"
+            f"## 你的任务\n"
+            f"基于提供的规范文档内容，准确、专业地回答用户的问题。\n\n"
+            f"## 知识库来源\n"
+            f"当前查询的知识库：{kb_name}\n\n"
+            f"## 📚 参考文档内容说明\n"
+            f"下面的文档内容分为两个层次：\n\n"
+            f"### 📍 直接相关内容\n"
+            f"这部分是通过语义搜索直接匹配到的内容，与用户问题最相关（已标注相似度）。\n"
+            f"**这是回答问题的主要依据。**\n\n"
+            f"### 🔗 相关上下文信息  \n"
+            f"这部分是直接相关内容的上下文扩展（同级章节、子章节等），用于补充背景和完整性。\n"
+            f"**帮助你全面理解规范的完整语境，避免断章取义。**\n\n"
+            f"---\n\n"
             f"{context}\n\n"
-            f"Instructions:\n"
-            f"- Answer based on the provided context\n"
-            f"- If the context doesn't contain relevant information, say so\n"
-            f"- Be concise and accurate"
+            f"---\n\n"
+            f"## 回答要求\n"
+            f"1. **准确性**：\n"
+            f"   - 优先基于「直接相关内容」回答\n"
+            f"   - 必要时参考「相关上下文信息」补充完整性\n"
+            f"   - 不要编造文档中不存在的信息\n\n"
+            f"2. **专业性**：\n"
+            f"   - 使用专业的建筑术语\n"
+            f"   - 引用具体的规范条款和章节\n"
+            f"   - 如果文档提到标题/章节，请在回答中体现\n\n"
+            f"3. **完整性**：\n"
+            f"   - 回答应该全面，涵盖问题的各个方面\n"
+            f"   - 如果相关内容涉及多个章节，请综合说明\n\n"
+            f"4. **结构化**：\n"
+            f"   - 使用清晰的格式组织回答（列表、表格、分点说明等）\n"
+            f"   - 重要内容使用加粗或标题突出\n\n"
+            f"5. **引用来源**：\n"
+            f"   - 如果可能，指出信息来自哪个规范或章节\n"
+            f"   - 明确区分不同来源的信息\n\n"
+            f"## 特殊情况处理\n"
+            f"- 如果文档中没有足够信息，请明确告知用户，并建议可能需要查阅的其他规范\n"
+            f"- 如果问题涉及多个规范，请综合分析并说明各自的适用场景\n"
+            f"- 如果规范可能有更新版本，请提醒用户注意版本差异"
         )
+
+        lang_instruction = self._LANGUAGE_INSTRUCTIONS.get(language, "")
+        if lang_instruction:
+            prompt += f"\n\n## Language\n{lang_instruction}"
+
+        return prompt
 
 
 class LlmExecutor:
@@ -192,13 +242,19 @@ class RagQueryOrchestrator:
         self.message_history = message_history
         self.config = config
 
-    async def execute(self, kb_ids: list[int], query: str, model_config: dict):
+    async def execute(self, kb_ids: list[int], query: str, model_config: dict, language: str = "zh-CN"):
         try:
             self.publisher.publish_initial_metadata(self.conversation, self.assistant_message)
 
+            # Translate query to Chinese for RAG retrieval when user language is not zh-CN.
+            # The LLM will read Chinese chunks and respond in the user's language via the
+            # language instruction in the system prompt.
+            from app.modules.rag.translation import translate_to_zh
+            search_query = await translate_to_zh(query, source_lang=language)
+
             search_result = await self.search_executor.execute(
                 kb_ids=kb_ids,
-                query=query,
+                query=search_query,
                 enhance_config=self.config.get("enhance"),
                 limit_config=self.config.get("limit"),
             )
@@ -208,6 +264,7 @@ class RagQueryOrchestrator:
             system_prompt = await self.context_builder.build_system_prompt(
                 context=context_text,
                 kb_name=search_result.get("kb_name", "Knowledge Base"),
+                language=language,
             )
 
             recent_history = self.message_history[-MAX_HISTORY_MESSAGES:]

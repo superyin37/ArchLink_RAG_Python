@@ -13,7 +13,9 @@ class SSEStream:
 
     def send_text(self, text: str):
         if not self._closed:
-            self.queue.put_nowait(f"data: {text}\n\n")
+            # Escape newlines so they don't break the SSE event format
+            encoded = text.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '')
+            self.queue.put_nowait(f"data: {encoded}\n\n")
 
     def send_json(self, data: dict):
         if not self._closed:

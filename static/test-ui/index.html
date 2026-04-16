@@ -6,22 +6,95 @@
   <title>RAG 测试平台</title>
   <script src="vendor/vue.global.prod.js"></script>
   <script src="vendor/tailwind.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
   <style>
     [v-cloak] { display: none; }
+
+    /* Chat bubbles */
     .chat-bubble-user { background: #2563eb; color: #fff; border-radius: 18px 18px 4px 18px; }
     .chat-bubble-ai   { background: #f1f5f9; color: #1e293b; border-radius: 18px 18px 18px 4px; }
+
+    /* Score bars */
     .score-bar { height: 6px; border-radius: 3px; background: #e2e8f0; }
     .score-fill { height: 6px; border-radius: 3px; background: #3b82f6; transition: width 0.4s; }
     .score-fill-green  { background: #22c55e; }
     .score-fill-orange { background: #f59e0b; }
-    pre { white-space: pre-wrap; word-break: break-word; }
+
+    /* Thinking block */
     .thinking-block { background: #fefce8; border-left: 3px solid #eab308; padding: 8px 12px; font-size: 0.8rem; color: #713f12; border-radius: 4px; }
-    .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; }
+
+    /* Chunk cards */
     .chunk-card { border-left: 3px solid #3b82f6; }
     .chunk-card-ms { border-left-color: #22c55e; }
     .chunk-card-hy { border-left-color: #a855f7; }
+
+    /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Streaming cursor */
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+    .streaming-cursor::after { content: '▍'; display: inline; animation: blink 0.9s step-start infinite; color: #2563eb; font-size: 0.9em; margin-left: 1px; }
+
+    /* Streaming plain text */
+    .streaming-text { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: inherit; margin: 0; }
+
+    /* Markdown rendered content */
+    .markdown-body { line-height: 1.75; word-break: break-word; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3,
+    .markdown-body h4,.markdown-body h5,.markdown-body h6 {
+      font-weight: 700; margin-top: 1.1em; margin-bottom: 0.4em; line-height: 1.3;
+    }
+    .markdown-body h1 { font-size: 1.4em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.25em; }
+    .markdown-body h2 { font-size: 1.2em; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.2em; }
+    .markdown-body h3 { font-size: 1.05em; }
+    .markdown-body h4,.markdown-body h5,.markdown-body h6 { font-size: 0.95em; }
+    .markdown-body p  { margin: 0.55em 0; }
+    .markdown-body ul,.markdown-body ol { padding-left: 1.4em; margin: 0.5em 0; }
+    .markdown-body ul { list-style: disc; }
+    .markdown-body ol { list-style: decimal; }
+    .markdown-body li { margin: 0.2em 0; }
+    .markdown-body blockquote {
+      border-left: 3px solid #94a3b8; margin: 0.6em 0;
+      padding: 0.3em 0.8em; color: #64748b; background: #f8fafc; border-radius: 2px;
+    }
+    .markdown-body code {
+      background: #e2e8f0; color: #be185d; padding: 0.1em 0.35em;
+      border-radius: 4px; font-size: 0.88em; font-family: 'Fira Code', 'Courier New', monospace;
+    }
+    .markdown-body pre {
+      background: #1e293b; color: #e2e8f0; border-radius: 0 0 8px 8px;
+      padding: 0.85em 1em; overflow-x: auto; margin: 0; font-size: 0.85em;
+    }
+    .markdown-body pre code {
+      background: none; color: inherit; padding: 0; border-radius: 0; font-size: inherit;
+    }
+    .markdown-body table { border-collapse: collapse; width: 100%; margin: 0.7em 0; font-size: 0.88em; }
+    .markdown-body th,.markdown-body td {
+      border: 1px solid #cbd5e1; padding: 0.4em 0.75em; text-align: left;
+    }
+    .markdown-body th { background: #f1f5f9; font-weight: 600; }
+    .markdown-body tr:nth-child(even) { background: #f8fafc; }
+    .markdown-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 1em 0; }
+    .markdown-body a { color: #2563eb; text-decoration: underline; }
+    .markdown-body strong { font-weight: 700; }
+    .markdown-body em { font-style: italic; }
+    .markdown-body .katex-display { overflow-x: auto; overflow-y: hidden; margin: 0.8em 0; }
+
+    /* Code block wrapper with copy button */
+    .code-block-wrapper { border-radius: 8px; overflow: hidden; margin: 0.7em 0; }
+    .code-block-header {
+      background: #0f172a; display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 12px; font-size: 0.75em;
+    }
+    .code-lang { color: #64748b; font-family: monospace; }
+    .copy-code-btn {
+      background: #1e293b; border: 1px solid #334155; color: #94a3b8;
+      padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75em;
+      transition: all 0.15s;
+    }
+    .copy-code-btn:hover { background: #334155; color: #e2e8f0; }
+    .copy-code-btn.copied { color: #22c55e; border-color: #22c55e; }
   </style>
 </head>
 <body class="bg-gray-50 text-slate-800 min-h-screen">
@@ -32,202 +105,125 @@
   <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm">
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">R</div>
-      <span class="font-semibold text-slate-800 text-lg">RAG 测试平台</span>
+      <span class="font-semibold text-slate-800 text-lg">{{ ui.appTitle }}</span>
     </div>
     <div class="flex items-center gap-3 text-sm">
-      <span class="text-slate-500">API:</span>
+      <span class="text-slate-500">{{ ui.headerApi }}</span>
       <input v-model="apiBase" class="border border-slate-300 rounded px-2 py-1 text-sm w-52 focus:outline-none focus:border-blue-400" />
-      <span class="text-slate-500">Token:</span>
-      <input v-model="authToken" type="password" placeholder="可留空" class="border border-slate-300 rounded px-2 py-1 text-sm w-36 focus:outline-none focus:border-blue-400" />
-      <button @click="reload" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">刷新数据</button>
+      <span class="text-slate-500">{{ ui.headerToken }}</span>
+      <input v-model="authToken" type="password" :placeholder="ui.headerTokenPlaceholder" class="border border-slate-300 rounded px-2 py-1 text-sm w-36 focus:outline-none focus:border-blue-400" />
+      <button @click="reload" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">{{ ui.headerRefresh }}</button>
       <span :class="healthColor" class="text-xs font-medium px-2 py-1 rounded-full border">{{ healthText }}</span>
+      <!-- Language toggle -->
+      <button @click="toggleLang"
+        class="px-3 py-1 rounded border border-slate-300 text-sm hover:bg-slate-100 transition-colors font-medium text-slate-600">
+        {{ ui.langSwitch }}
+      </button>
     </div>
   </header>
 
   <!-- Tabs -->
   <nav class="bg-white border-b border-slate-200 px-6 flex gap-6 text-sm font-medium">
-    <button v-for="t in tabs" :key="t.key"
-      @click="activeTab = t.key"
-      :class="['py-3 px-1 border-b-2 transition-colors', activeTab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
-      {{ t.label }}
+    <button v-for="tab in tabs" :key="tab.key"
+      @click="activeTab = tab.key"
+      :class="['py-3 px-1 border-b-2 transition-colors', activeTab === tab.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+      {{ tab.icon }} {{ tab.label }}
     </button>
   </nav>
 
   <!-- Main Content -->
   <main class="flex-1 p-6">
 
-    <!-- ===== TAB: SEARCH ===== -->
-    <div v-show="activeTab === 'search'">
-      <div class="max-w-7xl mx-auto">
-        <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5 shadow-sm">
-          <h2 class="font-semibold text-slate-700 mb-4">搜索对比测试</h2>
-          <div class="flex flex-wrap gap-3 items-end">
-            <div class="flex flex-col gap-1">
-              <label class="text-xs text-slate-500">知识库</label>
-              <select v-model="searchKbId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-48">
-                <option :value="null" disabled>请选择知识库</option>
-                <option v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }} (ID:{{ kb.id }})</option>
-              </select>
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-64">
-              <label class="text-xs text-slate-500">查询语句</label>
-              <input v-model="searchQuery" @keyup.enter="doSearch"
-                placeholder="输入查询内容，按 Enter 搜索..."
-                class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs text-slate-500">Top K</label>
-              <input v-model.number="searchTopK" type="number" min="1" max="20"
-                class="border border-slate-300 rounded px-3 py-2 text-sm w-20 focus:outline-none focus:border-blue-400" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-xs text-slate-500">向量阈值</label>
-              <input v-model.number="searchThreshold" type="number" min="0" max="1" step="0.05"
-                class="border border-slate-300 rounded px-3 py-2 text-sm w-24 focus:outline-none focus:border-blue-400" />
-            </div>
-            <button @click="doSearch" :disabled="searchLoading || !searchKbId || !searchQuery"
-              class="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              {{ searchLoading ? '搜索中...' : '搜索' }}
+    <!-- ===== TAB: CHAT ===== -->
+    <div v-show="activeTab === 'chat'" class="max-w-6xl mx-auto flex flex-col h-full">
+
+      <!-- Config bar (collapsible) -->
+      <div class="bg-white rounded-xl border border-slate-200 mb-4 shadow-sm overflow-hidden">
+        <!-- Summary row (always visible) -->
+        <div class="px-4 py-2.5 flex items-center gap-4 text-sm">
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <span class="text-slate-400 text-xs shrink-0">{{ ui.chatLabelKb }}</span>
+            <span class="font-medium text-slate-700 truncate">{{ chatKbName }}</span>
+            <span class="text-slate-300 mx-1">·</span>
+            <span class="text-slate-400 text-xs shrink-0">{{ ui.chatLabelModel }}</span>
+            <span class="font-medium text-slate-700 truncate">{{ chatModelName }}</span>
+            <span class="text-slate-300 mx-1">·</span>
+            <span class="text-slate-400 text-xs">Top K {{ chatTopK }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button @click="clearChat" class="text-xs text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded hover:bg-red-50">
+              {{ ui.chatBtnClear }}
+            </button>
+            <button @click="configOpen = !configOpen"
+              class="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50 transition-colors">
+              {{ configOpen ? ui.chatBtnCollapse : ui.chatBtnConfig }}
             </button>
           </div>
         </div>
 
-        <!-- Search Results: 3 columns -->
-        <div v-if="searchResults" class="grid grid-cols-3 gap-4">
-          <!-- Vector -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center justify-between">
-              <span class="font-semibold text-blue-700 text-sm">向量搜索</span>
-              <span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">{{ (searchResults.vector || []).length }} 条</span>
-            </div>
-            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
-              <div v-if="!searchResults.vector || searchResults.vector.length === 0" class="text-slate-400 text-sm text-center py-8">无结果</div>
-              <div v-for="(item, i) in searchResults.vector" :key="i"
-                class="chunk-card bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
-                  <span class="font-semibold text-blue-600">{{ formatScore(item.score) }}</span>
-                </div>
-                <div class="score-bar mb-2"><div class="score-fill" :style="{width: (item.score * 100) + '%'}"></div></div>
-                <div class="text-slate-600 line-clamp-6 leading-relaxed">{{ item.content }}</div>
-                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">
-                  {{ item.doc_name || item.document_name }}
-                </div>
-              </div>
-            </div>
+        <!-- Expanded config -->
+        <div v-show="configOpen" class="border-t border-slate-100 px-4 py-3 flex flex-wrap gap-3 items-end bg-slate-50">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-slate-500">{{ ui.chatLabelKb }}</label>
+            <select v-model="chatKbId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-44 bg-white">
+              <option :value="null" disabled>{{ ui.chatSelectKb }}</option>
+              <option v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }}</option>
+            </select>
           </div>
-
-          <!-- Meilisearch -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="bg-green-50 border-b border-green-100 px-4 py-3 flex items-center justify-between">
-              <span class="font-semibold text-green-700 text-sm">全文搜索</span>
-              <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">{{ (searchResults.meilisearch || []).length }} 条</span>
-            </div>
-            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
-              <div v-if="!searchResults.meilisearch || searchResults.meilisearch.length === 0" class="text-slate-400 text-sm text-center py-8">无结果</div>
-              <div v-for="(item, i) in searchResults.meilisearch" :key="i"
-                class="chunk-card chunk-card-ms bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
-                  <span class="font-semibold text-green-600">{{ formatScore(item.score) }}</span>
-                </div>
-                <div class="score-bar mb-2"><div class="score-fill score-fill-green" :style="{width: Math.min(item.score * 100, 100) + '%'}"></div></div>
-                <div class="text-slate-600 line-clamp-6 leading-relaxed">{{ item.content }}</div>
-                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">
-                  {{ item.doc_name || item.document_name }}
-                </div>
-              </div>
-            </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-slate-500">{{ ui.chatLabelModel }}</label>
+            <select v-model="chatModelId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-52 bg-white">
+              <option value="" disabled>{{ ui.chatSelectModel }}</option>
+              <option v-for="m in models" :key="m.model_id" :value="m.model_id">{{ m.name || m.model_id }}</option>
+            </select>
           </div>
-
-          <!-- Hybrid -->
-          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="bg-purple-50 border-b border-purple-100 px-4 py-3 flex items-center justify-between">
-              <span class="font-semibold text-purple-700 text-sm">混合搜索</span>
-              <span class="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{{ (searchResults.hybrid || []).length }} 条</span>
-            </div>
-            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
-              <div v-if="!searchResults.hybrid || searchResults.hybrid.length === 0" class="text-slate-400 text-sm text-center py-8">无结果</div>
-              <div v-for="(item, i) in searchResults.hybrid" :key="i"
-                class="chunk-card chunk-card-hy bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
-                  <span class="font-semibold text-purple-600">{{ formatScore(item.score) }}</span>
-                </div>
-                <div class="score-bar mb-2"><div class="score-fill" style="background:#a855f7" :style="{width: (item.score * 100) + '%'}"></div></div>
-                <div class="text-slate-600 line-clamp-6 leading-relaxed">{{ item.content }}</div>
-                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">
-                  {{ item.doc_name || item.document_name }}
-                </div>
-              </div>
-            </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-slate-500">{{ ui.chatLabelTopK }}</label>
+            <input v-model.number="chatTopK" type="number" min="1" max="30"
+              class="border border-slate-300 rounded px-3 py-2 text-sm w-20 focus:outline-none focus:border-blue-400 bg-white" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-slate-500">{{ ui.chatLabelThreshold }}</label>
+            <input v-model.number="chatThreshold" type="number" min="0" max="1" step="0.05"
+              class="border border-slate-300 rounded px-3 py-2 text-sm w-24 focus:outline-none focus:border-blue-400 bg-white" />
           </div>
         </div>
-
-        <!-- Empty state -->
-        <div v-if="!searchResults && !searchLoading" class="text-center py-20 text-slate-400">
-          选择知识库，输入查询内容，点击搜索查看三种搜索方式的对比结果
-        </div>
-        <div v-if="searchLoading" class="text-center py-20 text-slate-400">
-          <div class="inline-block w-8 h-8 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin mb-3"></div>
-          <div>搜索中...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== TAB: CHAT ===== -->
-    <div v-show="activeTab === 'chat'" class="max-w-5xl mx-auto flex flex-col h-full">
-      <!-- Config bar -->
-      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4 shadow-sm flex flex-wrap gap-3 items-end">
-        <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-500">知识库</label>
-          <select v-model="chatKbId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-44">
-            <option :value="null" disabled>请选择知识库</option>
-            <option v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }} (ID:{{ kb.id }})</option>
-          </select>
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-500">模型</label>
-          <select v-model="chatModelId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-52">
-            <option value="" disabled>请选择模型</option>
-            <option v-for="m in models" :key="m.model_id" :value="m.model_id">{{ m.name || m.model_id }}</option>
-          </select>
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-500">Top K</label>
-          <input v-model.number="chatTopK" type="number" min="1" max="30"
-            class="border border-slate-300 rounded px-3 py-2 text-sm w-20 focus:outline-none focus:border-blue-400" />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-500">阈值</label>
-          <input v-model.number="chatThreshold" type="number" min="0" max="1" step="0.05"
-            class="border border-slate-300 rounded px-3 py-2 text-sm w-24 focus:outline-none focus:border-blue-400" />
-        </div>
-        <button @click="clearChat" class="ml-auto text-sm text-slate-500 hover:text-red-500 transition-colors px-3 py-2 border border-slate-200 rounded hover:border-red-300">
-          清空对话
-        </button>
       </div>
 
       <!-- Chat area -->
       <div class="flex gap-4 flex-1" style="min-height: 0;">
         <!-- Messages -->
         <div class="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div ref="chatScroll" class="flex-1 overflow-y-auto p-4 space-y-4" style="max-height: 60vh;">
-            <div v-if="chatMessages.length === 0" class="text-center text-slate-400 py-16">
-              选择知识库和模型，开始 RAG 对话测试
+          <div ref="chatScroll" class="flex-1 overflow-y-auto p-4 space-y-4" style="max-height: 65vh;" @click="handleChatClick">
+            <div v-if="chatMessages.length === 0" class="text-center text-slate-400 py-16 text-sm">
+              {{ ui.chatEmptyState }}
             </div>
             <div v-for="(msg, i) in chatMessages" :key="i"
               :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
-              <div class="max-w-xl">
+              <div :class="msg.role === 'user' ? 'max-w-[70%]' : 'max-w-[85%] w-full'">
                 <!-- Thinking block -->
                 <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block mb-2 text-xs">
-                  <div class="font-semibold mb-1 text-yellow-700">思维链</div>
-                  <pre class="text-yellow-800 text-xs">{{ msg.thinking }}</pre>
+                  <div class="font-semibold mb-1 text-yellow-700">{{ ui.chatThinkingTitle }}</div>
+                  <pre class="text-yellow-800 text-xs whitespace-pre-wrap">{{ msg.thinking }}</pre>
                 </div>
                 <!-- Bubble -->
                 <div :class="['px-4 py-3 text-sm leading-relaxed', msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai']">
-                  <pre v-if="msg.role === 'assistant'" class="font-sans text-sm leading-relaxed">{{ msg.content || '...' }}</pre>
+                  <!-- Assistant: plain text while streaming, markdown after done -->
+                  <template v-if="msg.role === 'assistant'">
+                    <div v-if="msg.streaming && !msg.content" class="flex gap-1.5 items-center py-1">
+                      <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>
+                      <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>
+                      <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay:300ms"></span>
+                    </div>
+                    <div v-else-if="msg.streaming"
+                      class="streaming-text streaming-cursor">{{ msg.content }}</div>
+                    <div v-else class="markdown-body" v-html="renderMarkdown(msg.content || '')"></div>
+                  </template>
                   <span v-else>{{ msg.content }}</span>
+                </div>
+                <!-- Timestamp -->
+                <div :class="['text-xs text-slate-400 mt-1', msg.role === 'user' ? 'text-right' : 'text-left']">
+                  {{ msg.time }}
                 </div>
               </div>
             </div>
@@ -236,14 +232,14 @@
           <!-- Input area -->
           <div class="border-t border-slate-200 p-3 flex gap-2">
             <textarea v-model="chatInput" @keydown.enter.exact.prevent="sendMessage"
-              placeholder="输入问题... (Enter 发送，Shift+Enter 换行)"
+              :placeholder="ui.chatPlaceholder"
               rows="2"
               class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-blue-400"
               :disabled="chatLoading"></textarea>
             <button @click="sendMessage"
               :disabled="chatLoading || !chatInput.trim() || !chatKbId || !chatModelId"
               class="bg-blue-600 text-white px-4 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              {{ chatLoading ? '...' : '发送' }}
+              {{ chatLoading ? ui.chatSending : ui.chatSend }}
             </button>
           </div>
         </div>
@@ -251,12 +247,12 @@
         <!-- RAG Chunks panel -->
         <div class="w-72 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div class="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-            <span class="font-semibold text-sm text-slate-700">RAG 上下文</span>
+            <span class="font-semibold text-sm text-slate-700">{{ ui.ragPanelTitle }}</span>
             <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{{ ragChunks.length }} chunks</span>
           </div>
-          <div class="flex-1 overflow-y-auto p-3 space-y-2" style="max-height: 60vh;">
+          <div class="flex-1 overflow-y-auto p-3 space-y-2" style="max-height: 65vh;">
             <div v-if="ragChunks.length === 0" class="text-slate-400 text-xs text-center py-8">
-              发送消息后显示检索到的上下文片段
+              {{ ui.ragEmptyState }}
             </div>
             <div v-for="(chunk, i) in ragChunks" :key="i"
               class="chunk-card bg-slate-50 rounded-lg p-2 text-xs border border-slate-100">
@@ -264,7 +260,16 @@
                 <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
                 <span class="text-blue-500 font-semibold">{{ formatScore(chunk.score) }}</span>
               </div>
-              <div class="text-slate-600 leading-relaxed line-clamp-4">{{ chunk.content }}</div>
+              <div class="score-bar mb-2">
+                <div class="score-fill" :style="{width: normalizeScore(chunk.score, ragChunks) + '%'}"></div>
+              </div>
+              <!-- Expandable content -->
+              <div :class="['text-slate-600 leading-relaxed', chunk.expanded ? '' : 'line-clamp-4']">{{ chunk.content }}</div>
+              <button v-if="chunk.content && chunk.content.length > 100"
+                @click="chunk.expanded = !chunk.expanded"
+                class="mt-1 text-blue-500 hover:text-blue-600 text-xs">
+                {{ chunk.expanded ? ui.chunkCollapse : ui.chunkExpand }}
+              </button>
               <div v-if="chunk.doc_name || chunk.document_name" class="mt-1 text-slate-400 truncate text-xs">
                 {{ chunk.doc_name || chunk.document_name }}
               </div>
@@ -274,15 +279,136 @@
       </div>
     </div>
 
+    <!-- ===== TAB: SEARCH ===== -->
+    <div v-show="activeTab === 'search'">
+      <div class="max-w-7xl mx-auto">
+        <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5 shadow-sm">
+          <h2 class="font-semibold text-slate-700 mb-4">{{ ui.searchTitle }}</h2>
+          <div class="flex flex-wrap gap-3 items-end">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">{{ ui.searchLabelKb }}</label>
+              <select v-model="searchKbId" class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 min-w-48">
+                <option :value="null" disabled>{{ ui.searchSelectKb }}</option>
+                <option v-for="kb in kbs" :key="kb.id" :value="kb.id">{{ kb.name }} (ID:{{ kb.id }})</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-64">
+              <label class="text-xs text-slate-500">{{ ui.searchLabelQuery }}</label>
+              <input v-model="searchQuery" @keyup.enter="doSearch"
+                :placeholder="ui.searchQueryPlaceholder"
+                class="border border-slate-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">{{ ui.searchLabelTopK }}</label>
+              <input v-model.number="searchTopK" type="number" min="1" max="20"
+                class="border border-slate-300 rounded px-3 py-2 text-sm w-20 focus:outline-none focus:border-blue-400" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">{{ ui.searchLabelThreshold }}</label>
+              <input v-model.number="searchThreshold" type="number" min="0" max="1" step="0.05"
+                class="border border-slate-300 rounded px-3 py-2 text-sm w-24 focus:outline-none focus:border-blue-400" />
+            </div>
+            <button @click="doSearch" :disabled="searchLoading || !searchKbId || !searchQuery"
+              class="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              {{ searchLoading ? ui.searchBtnSearching : ui.searchBtnSearch }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Search Results: 3 columns -->
+        <div v-if="searchResults" class="grid grid-cols-3 gap-4">
+          <!-- Vector -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center justify-between">
+              <span class="font-semibold text-blue-700 text-sm">{{ ui.searchColVector }}</span>
+              <span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">{{ (searchResults.vector || []).length }}{{ ui.searchCountSuffix }}</span>
+            </div>
+            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
+              <div v-if="!searchResults.vector || searchResults.vector.length === 0" class="text-slate-400 text-sm text-center py-8">{{ ui.searchNoResult }}</div>
+              <div v-for="(item, i) in searchResults.vector" :key="i"
+                class="chunk-card bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                  <span class="font-semibold text-blue-600">{{ formatScore(item.score) }}</span>
+                </div>
+                <div class="score-bar mb-2">
+                  <div class="score-fill" :style="{width: normalizeScore(item.score, searchResults.vector) + '%'}"></div>
+                </div>
+                <div :class="['text-slate-600 leading-relaxed', item.expanded ? '' : 'line-clamp-6']">{{ item.content }}</div>
+                <button v-if="item.content && item.content.length > 120" @click="item.expanded = !item.expanded" class="mt-1 text-blue-500 text-xs">{{ item.expanded ? ui.searchCollapseBtn : ui.searchExpandBtn }}</button>
+                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">{{ item.doc_name || item.document_name }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meilisearch -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-green-50 border-b border-green-100 px-4 py-3 flex items-center justify-between">
+              <span class="font-semibold text-green-700 text-sm">{{ ui.searchColFulltext }}</span>
+              <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">{{ (searchResults.meilisearch || []).length }}{{ ui.searchCountSuffix }}</span>
+            </div>
+            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
+              <div v-if="!searchResults.meilisearch || searchResults.meilisearch.length === 0" class="text-slate-400 text-sm text-center py-8">{{ ui.searchNoResult }}</div>
+              <div v-for="(item, i) in searchResults.meilisearch" :key="i"
+                class="chunk-card chunk-card-ms bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                  <span class="font-semibold text-green-600">{{ formatScore(item.score) }}</span>
+                </div>
+                <div class="score-bar mb-2">
+                  <div class="score-fill score-fill-green" :style="{width: normalizeScore(item.score, searchResults.meilisearch) + '%'}"></div>
+                </div>
+                <div :class="['text-slate-600 leading-relaxed', item.expanded ? '' : 'line-clamp-6']">{{ item.content }}</div>
+                <button v-if="item.content && item.content.length > 120" @click="item.expanded = !item.expanded" class="mt-1 text-green-500 text-xs">{{ item.expanded ? ui.searchCollapseBtn : ui.searchExpandBtn }}</button>
+                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">{{ item.doc_name || item.document_name }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hybrid -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-purple-50 border-b border-purple-100 px-4 py-3 flex items-center justify-between">
+              <span class="font-semibold text-purple-700 text-sm">{{ ui.searchColHybrid }}</span>
+              <span class="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{{ (searchResults.hybrid || []).length }}{{ ui.searchCountSuffix }}</span>
+            </div>
+            <div class="p-3 space-y-3 max-h-screen overflow-y-auto">
+              <div v-if="!searchResults.hybrid || searchResults.hybrid.length === 0" class="text-slate-400 text-sm text-center py-8">{{ ui.searchNoResult }}</div>
+              <div v-for="(item, i) in searchResults.hybrid" :key="i"
+                class="chunk-card chunk-card-hy bg-slate-50 rounded-lg p-3 text-xs border border-slate-100">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono text-slate-400">#{{ i + 1 }}</span>
+                  <span class="font-semibold text-purple-600">{{ formatScore(item.score) }}</span>
+                </div>
+                <div class="score-bar mb-2">
+                  <div class="score-fill" style="background:#a855f7" :style="{width: normalizeScore(item.score, searchResults.hybrid) + '%'}"></div>
+                </div>
+                <div :class="['text-slate-600 leading-relaxed', item.expanded ? '' : 'line-clamp-6']">{{ item.content }}</div>
+                <button v-if="item.content && item.content.length > 120" @click="item.expanded = !item.expanded" class="mt-1 text-purple-500 text-xs">{{ item.expanded ? ui.searchCollapseBtn : ui.searchExpandBtn }}</button>
+                <div v-if="item.doc_name || item.document_name" class="mt-2 text-slate-400 truncate">{{ item.doc_name || item.document_name }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!searchResults && !searchLoading" class="text-center py-20 text-slate-400">
+          {{ ui.searchHint }}
+        </div>
+        <div v-if="searchLoading" class="text-center py-20 text-slate-400">
+          <div class="inline-block w-8 h-8 border-4 border-blue-300 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+          <div>{{ ui.searchLoading }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== TAB: KB OVERVIEW ===== -->
     <div v-show="activeTab === 'kb'" class="max-w-5xl mx-auto">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="font-semibold text-slate-700">知识库概览</h2>
-        <button @click="loadKbList" class="text-sm text-blue-600 hover:underline">刷新</button>
+        <h2 class="font-semibold text-slate-700">{{ ui.kbTitle }}</h2>
+        <button @click="loadKbList" class="text-sm text-blue-600 hover:underline">{{ ui.kbRefresh }}</button>
       </div>
 
       <div class="grid grid-cols-1 gap-4">
-        <div v-if="kbs.length === 0" class="text-center py-16 text-slate-400">暂无知识库数据</div>
+        <div v-if="kbs.length === 0" class="text-center py-16 text-slate-400">{{ ui.kbEmpty }}</div>
         <div v-for="kb in kbs" :key="kb.id"
           class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:shadow-md transition-shadow">
           <div class="flex items-start justify-between mb-3">
@@ -294,35 +420,40 @@
                   {{ kb.status }}
                 </span>
               </div>
-              <div class="text-sm text-slate-500">{{ kb.description || '无描述' }}</div>
+              <div class="text-sm text-slate-500">{{ kb.description || ui.kbNoDesc }}</div>
             </div>
-            <div class="text-right text-xs text-slate-400">
-              <div>ID: {{ kb.id }}</div>
-              <div>{{ kb.embedding_model }}</div>
+            <div class="flex items-center gap-3">
+              <button @click="goToChat(kb.id)"
+                class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors font-medium">
+                {{ ui.kbGoChat }}
+              </button>
+              <div class="text-right text-xs text-slate-400">
+                <div>ID: {{ kb.id }}</div>
+                <div>{{ kb.embedding_model }}</div>
+              </div>
             </div>
           </div>
 
-          <!-- Stats -->
           <div v-if="kbStats[kb.id]" class="grid grid-cols-4 gap-3 mt-3">
             <div class="bg-blue-50 rounded-lg p-2 text-center">
               <div class="text-xl font-bold text-blue-600">{{ kbStats[kb.id].doc_count }}</div>
-              <div class="text-xs text-blue-500 mt-0.5">文档</div>
+              <div class="text-xs text-blue-500 mt-0.5">{{ ui.kbStatDoc }}</div>
             </div>
             <div class="bg-purple-50 rounded-lg p-2 text-center">
               <div class="text-xl font-bold text-purple-600">{{ kbStats[kb.id].chunk_count }}</div>
-              <div class="text-xs text-purple-500 mt-0.5">Chunks</div>
+              <div class="text-xs text-purple-500 mt-0.5">{{ ui.kbStatChunk }}</div>
             </div>
             <div class="bg-green-50 rounded-lg p-2 text-center">
               <div class="text-xl font-bold text-green-600">{{ formatChars(kbStats[kb.id].total_chars) }}</div>
-              <div class="text-xs text-green-500 mt-0.5">字符数</div>
+              <div class="text-xs text-green-500 mt-0.5">{{ ui.kbStatChars }}</div>
             </div>
             <div class="bg-orange-50 rounded-lg p-2 text-center">
               <div class="text-xl font-bold text-orange-600">{{ kbStats[kb.id].dimension }}</div>
-              <div class="text-xs text-orange-500 mt-0.5">维度</div>
+              <div class="text-xs text-orange-500 mt-0.5">{{ ui.kbStatDim }}</div>
             </div>
           </div>
           <div v-else class="mt-3">
-            <button @click="loadKbStats(kb.id)" class="text-xs text-blue-600 hover:underline">加载统计数据</button>
+            <button @click="loadKbStats(kb.id)" class="text-xs text-blue-600 hover:underline">{{ ui.kbLoadStats }}</button>
           </div>
         </div>
       </div>
@@ -331,61 +462,385 @@
   </main>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script>
-const { createApp, ref, reactive, nextTick, onMounted } = Vue;
+const { createApp, ref, reactive, computed, nextTick, onMounted, watch } = Vue;
+
+// ---- marked config ----
+marked.setOptions({ breaks: true, gfm: true });
+
+// ---- i18n locale definitions ----
+const LOCALES = {
+  'zh-CN': {
+    appTitle: 'RAG 测试平台',
+    langSwitch: 'EN',
+    headerApi: 'API:',
+    headerToken: 'Token:',
+    headerTokenPlaceholder: '可留空',
+    headerRefresh: '刷新数据',
+    tabChat: 'RAG 对话',
+    tabSearch: '搜索对比',
+    tabKb: 'KB 概览',
+    healthChecking: '检测中',
+    healthError: '服务异常',
+    healthFailed: '连接失败',
+    chatLabelKb: '知识库',
+    chatLabelModel: '模型',
+    chatLabelTopK: 'Top K',
+    chatLabelThreshold: '阈值',
+    chatBtnClear: '清空对话',
+    chatBtnCollapse: '收起',
+    chatBtnConfig: '配置',
+    chatSelectKb: '请选择知识库',
+    chatSelectModel: '请选择模型',
+    chatEmptyState: '选择知识库和模型，开始 RAG 对话测试',
+    chatPlaceholder: '输入问题... (Enter 发送，Shift+Enter 换行)',
+    chatSending: '...',
+    chatSend: '发送',
+    chatThinkingTitle: '思维链',
+    ragPanelTitle: 'RAG 上下文',
+    ragEmptyState: '发送消息后显示检索到的上下文片段',
+    chunkExpand: '展开全文',
+    chunkCollapse: '收起',
+    searchTitle: '搜索对比测试',
+    searchLabelKb: '知识库',
+    searchSelectKb: '请选择知识库',
+    searchLabelQuery: '查询语句',
+    searchQueryPlaceholder: '输入查询内容，按 Enter 搜索...',
+    searchLabelTopK: 'Top K',
+    searchLabelThreshold: '向量阈值',
+    searchBtnSearching: '搜索中...',
+    searchBtnSearch: '搜索',
+    searchNoResult: '无结果',
+    searchColVector: '向量搜索',
+    searchColFulltext: '全文搜索',
+    searchColHybrid: '混合搜索',
+    searchCountSuffix: ' 条',
+    searchExpandBtn: '展开',
+    searchCollapseBtn: '收起',
+    searchHint: '选择知识库，输入查询内容，点击搜索查看三种搜索方式的对比结果',
+    searchLoading: '搜索中...',
+    kbTitle: '知识库概览',
+    kbRefresh: '刷新',
+    kbEmpty: '暂无知识库数据',
+    kbNoDesc: '无描述',
+    kbGoChat: '去对话 →',
+    kbStatDoc: '文档',
+    kbStatChunk: 'Chunks',
+    kbStatChars: '字符数',
+    kbStatDim: '维度',
+    kbLoadStats: '加载统计数据',
+    noSelection: '未选择',
+    copyBtn: '复制',
+    copiedBtn: '已复制 ✓',
+    errorMsg: '[错误]',
+    requestFailed: '[请求失败]',
+    searchFailed: '搜索失败: ',
+  },
+  'en-US': {
+    appTitle: 'RAG Test Platform',
+    langSwitch: '日',
+    headerApi: 'API:',
+    headerToken: 'Token:',
+    headerTokenPlaceholder: 'Optional',
+    headerRefresh: 'Refresh',
+    tabChat: 'RAG Chat',
+    tabSearch: 'Search Compare',
+    tabKb: 'KB Overview',
+    healthChecking: 'Checking',
+    healthError: 'Service Error',
+    healthFailed: 'Connection Failed',
+    chatLabelKb: 'Knowledge Base',
+    chatLabelModel: 'Model',
+    chatLabelTopK: 'Top K',
+    chatLabelThreshold: 'Threshold',
+    chatBtnClear: 'Clear Chat',
+    chatBtnCollapse: 'Collapse',
+    chatBtnConfig: 'Config',
+    chatSelectKb: 'Select Knowledge Base',
+    chatSelectModel: 'Select Model',
+    chatEmptyState: 'Select a knowledge base and model to start RAG chat',
+    chatPlaceholder: 'Type message... (Enter to send, Shift+Enter for newline)',
+    chatSending: '...',
+    chatSend: 'Send',
+    chatThinkingTitle: 'Thinking',
+    ragPanelTitle: 'RAG Context',
+    ragEmptyState: 'Retrieved context chunks will appear here',
+    chunkExpand: 'Expand',
+    chunkCollapse: 'Collapse',
+    searchTitle: 'Search Comparison',
+    searchLabelKb: 'Knowledge Base',
+    searchSelectKb: 'Select Knowledge Base',
+    searchLabelQuery: 'Query',
+    searchQueryPlaceholder: 'Enter query, press Enter to search...',
+    searchLabelTopK: 'Top K',
+    searchLabelThreshold: 'Vector Threshold',
+    searchBtnSearching: 'Searching...',
+    searchBtnSearch: 'Search',
+    searchNoResult: 'No results',
+    searchColVector: 'Vector Search',
+    searchColFulltext: 'Fulltext Search',
+    searchColHybrid: 'Hybrid Search',
+    searchCountSuffix: '',
+    searchExpandBtn: 'Expand',
+    searchCollapseBtn: 'Collapse',
+    searchHint: 'Select a knowledge base, enter a query, and click Search to compare results',
+    searchLoading: 'Searching...',
+    kbTitle: 'Knowledge Base Overview',
+    kbRefresh: 'Refresh',
+    kbEmpty: 'No knowledge bases found',
+    kbNoDesc: 'No description',
+    kbGoChat: 'Go Chat →',
+    kbStatDoc: 'Docs',
+    kbStatChunk: 'Chunks',
+    kbStatChars: 'Chars',
+    kbStatDim: 'Dims',
+    kbLoadStats: 'Load Stats',
+    noSelection: 'Not selected',
+    copyBtn: 'Copy',
+    copiedBtn: 'Copied ✓',
+    errorMsg: '[Error]',
+    requestFailed: '[Request Failed]',
+    searchFailed: 'Search failed: ',
+  },
+  'ja-JP': {
+    appTitle: 'RAG テストプラットフォーム',
+    langSwitch: '中',
+    headerApi: 'API:',
+    headerToken: 'トークン:',
+    headerTokenPlaceholder: '省略可',
+    headerRefresh: '更新',
+    tabChat: 'RAG チャット',
+    tabSearch: '検索比較',
+    tabKb: 'KB 概覧',
+    healthChecking: '確認中',
+    healthError: 'サービスエラー',
+    healthFailed: '接続失敗',
+    chatLabelKb: 'ナレッジベース',
+    chatLabelModel: 'モデル',
+    chatLabelTopK: 'Top K',
+    chatLabelThreshold: 'しきい値',
+    chatBtnClear: 'チャットをクリア',
+    chatBtnCollapse: '折りたたむ',
+    chatBtnConfig: '設定',
+    chatSelectKb: 'ナレッジベースを選択',
+    chatSelectModel: 'モデルを選択',
+    chatEmptyState: 'ナレッジベースとモデルを選択してRAGチャットを開始',
+    chatPlaceholder: 'メッセージを入力... (Enter で送信、Shift+Enter で改行)',
+    chatSending: '...',
+    chatSend: '送信',
+    chatThinkingTitle: '思考過程',
+    ragPanelTitle: 'RAG コンテキスト',
+    ragEmptyState: 'メッセージ送信後にコンテキストが表示されます',
+    chunkExpand: '全文表示',
+    chunkCollapse: '折りたたむ',
+    searchTitle: '検索比較テスト',
+    searchLabelKb: 'ナレッジベース',
+    searchSelectKb: 'ナレッジベースを選択',
+    searchLabelQuery: 'クエリ',
+    searchQueryPlaceholder: 'クエリを入力、Enter で検索...',
+    searchLabelTopK: 'Top K',
+    searchLabelThreshold: 'ベクトルしきい値',
+    searchBtnSearching: '検索中...',
+    searchBtnSearch: '検索',
+    searchNoResult: '結果なし',
+    searchColVector: 'ベクトル検索',
+    searchColFulltext: '全文検索',
+    searchColHybrid: 'ハイブリッド検索',
+    searchCountSuffix: ' 件',
+    searchExpandBtn: '展開',
+    searchCollapseBtn: '折りたたむ',
+    searchHint: 'ナレッジベースを選択し、クエリを入力して検索ボタンをクリックしてください',
+    searchLoading: '検索中...',
+    kbTitle: 'ナレッジベース概覧',
+    kbRefresh: '更新',
+    kbEmpty: 'ナレッジベースが見つかりません',
+    kbNoDesc: '説明なし',
+    kbGoChat: 'チャットへ →',
+    kbStatDoc: 'ドキュメント',
+    kbStatChunk: 'チャンク',
+    kbStatChars: '文字数',
+    kbStatDim: '次元',
+    kbLoadStats: '統計を読み込む',
+    noSelection: '未選択',
+    copyBtn: 'コピー',
+    copiedBtn: 'コピー済 ✓',
+    errorMsg: '[エラー]',
+    requestFailed: '[リクエスト失敗]',
+    searchFailed: '検索失敗: ',
+  },
+};
 
 createApp({
   setup() {
-    const apiBase = ref(localStorage.getItem('rag_api_base') || window.location.origin);
+    // ---- Language ----
+    const currentLang = ref(localStorage.getItem('rag_lang') || 'zh-CN');
+    const ui = computed(() => LOCALES[currentLang.value]);
+
+    const LANG_CYCLE = ['zh-CN', 'en-US', 'ja-JP'];
+    const toggleLang = () => {
+      const idx = LANG_CYCLE.indexOf(currentLang.value);
+      currentLang.value = LANG_CYCLE[(idx + 1) % LANG_CYCLE.length];
+      localStorage.setItem('rag_lang', currentLang.value);
+    };
+
+    // Sync document lang attribute and title
+    watch(currentLang, lang => {
+      document.documentElement.lang = lang;
+      document.title = LOCALES[lang].appTitle;
+    }, { immediate: true });
+
+    // ---- Markdown + KaTeX renderer (inside setup to access ui for copy button) ----
+    const renderMarkdown = (text) => {
+      if (!text) return '';
+      const mathPlaceholders = [];
+
+      let processed = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, formula) => {
+        const idx = mathPlaceholders.length;
+        try {
+          mathPlaceholders.push(katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false }));
+        } catch {
+          mathPlaceholders.push(`<pre>$$${formula}$$</pre>`);
+        }
+        return `\x00MATH${idx}\x00`;
+      });
+
+      processed = processed.replace(/\$(?!\$)([^$\n]+?)\$/g, (_, formula) => {
+        const idx = mathPlaceholders.length;
+        try {
+          mathPlaceholders.push(katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false }));
+        } catch {
+          mathPlaceholders.push(`<code>$${formula}$</code>`);
+        }
+        return `\x00MATH${idx}\x00`;
+      });
+
+      processed = marked.parse(processed);
+
+      const copyLabel = ui.value.copyBtn;
+      processed = processed.replace(
+        /<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g,
+        (_, attrs, code) => {
+          const langMatch = attrs.match(/class="language-([^"]+)"/);
+          const lang = langMatch ? langMatch[1] : 'text';
+          const b64 = btoa(unescape(encodeURIComponent(
+            code.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"')
+          )));
+          return `<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">${lang}</span><button class="copy-code-btn" data-code="${b64}">${copyLabel}</button></div><pre><code${attrs}>${code}</code></pre></div>`;
+        }
+      );
+
+      mathPlaceholders.forEach((rendered, idx) => {
+        processed = processed.split(`\x00MATH${idx}\x00`).join(rendered);
+      });
+
+      return processed;
+    };
+
+    // ---- Copy button handler (event delegation) ----
+    const handleChatClick = (e) => {
+      const btn = e.target.closest('.copy-code-btn');
+      if (!btn) return;
+      try {
+        const code = decodeURIComponent(escape(atob(btn.dataset.code)));
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = ui.value.copiedBtn;
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = ui.value.copyBtn;
+            btn.classList.remove('copied');
+          }, 2000);
+        });
+      } catch { /* ignore */ }
+    };
+
+    // ---- Time helper ----
+    const nowTime = () => new Date().toLocaleTimeString(currentLang.value, { hour: '2-digit', minute: '2-digit' });
+
+    // ---- Core state ----
+    const apiBase   = ref(localStorage.getItem('rag_api_base') || window.location.origin);
     const authToken = ref(localStorage.getItem('rag_auth_token') || '');
 
-    const tabs = [
-      { key: 'search', label: '搜索对比' },
-      { key: 'chat',   label: 'RAG 对话' },
-      { key: 'kb',     label: 'KB 概览' },
-    ];
-    const activeTab = ref('search');
+    const tabs = computed(() => [
+      { key: 'chat',   label: ui.value.tabChat,   icon: '💬' },
+      { key: 'search', label: ui.value.tabSearch, icon: '🔍' },
+      { key: 'kb',     label: ui.value.tabKb,     icon: '📚' },
+    ]);
+    const activeTab = ref('chat');
 
-    const healthText = ref('检测中');
-    const healthColor = ref('text-slate-400 border-slate-200');
+    // ---- Health ----
+    const healthStatus = ref('checking'); // 'checking' | 'ok' | 'error' | 'failed'
+    const healthParts  = ref([]);
 
-    // Shared data
-    const kbs = ref([]);
+    const healthText = computed(() => {
+      if (healthStatus.value === 'ok') return healthParts.value.join(' · ') + ' OK';
+      if (healthStatus.value === 'error')  return ui.value.healthError;
+      if (healthStatus.value === 'failed') return ui.value.healthFailed;
+      return ui.value.healthChecking;
+    });
+    const healthColor = computed(() => {
+      if (healthStatus.value === 'ok')     return 'text-green-600 border-green-200 bg-green-50';
+      if (healthStatus.value === 'checking') return 'text-slate-400 border-slate-200';
+      return 'text-red-500 border-red-200 bg-red-50';
+    });
+
+    // ---- Shared data ----
+    const kbs    = ref([]);
     const models = ref([]);
 
-    // Search state
-    const searchKbId = ref(null);
-    const searchQuery = ref('');
-    const searchTopK = ref(5);
+    // ---- Search state ----
+    const searchKbId      = ref(null);
+    const searchQuery     = ref('');
+    const searchTopK      = ref(5);
     const searchThreshold = ref(0.0);
-    const searchLoading = ref(false);
-    const searchResults = ref(null);
+    const searchLoading   = ref(false);
+    const searchResults   = ref(null);
 
-    // Chat state
-    const chatKbId = ref(null);
-    const chatModelId = ref('');
-    const chatTopK = ref(10);
-    const chatThreshold = ref(0.0);
-    const chatMessages = ref([]);
-    const chatInput = ref('');
-    const chatLoading = ref(false);
-    const chatScroll = ref(null);
+    // ---- Chat state ----
+    const chatKbId       = ref(null);
+    const chatModelId    = ref('');
+    const chatTopK       = ref(10);
+    const chatThreshold  = ref(0.0);
+    const chatMessages   = ref([]);
+    const chatInput      = ref('');
+    const chatLoading    = ref(false);
+    const chatScroll     = ref(null);
     const conversationId = ref(null);
-    const ragChunks = ref([]);
+    const ragChunks      = ref([]);
+    const configOpen     = ref(false);
 
-    // KB stats
+    // ---- KB stats ----
     const kbStats = ref({});
+
+    // ---- Computed display names ----
+    const chatKbName = computed(() => kbs.value.find(k => k.id === chatKbId.value)?.name || ui.value.noSelection);
+    const chatModelName = computed(() => {
+      const m = models.value.find(m => m.model_id === chatModelId.value);
+      return m ? (m.name || m.model_id) : ui.value.noSelection;
+    });
+
+    // ---- Persist KB/model selection ----
+    watch(chatKbId,    v => { if (v) localStorage.setItem('rag_chat_kb_id', v); });
+    watch(chatModelId, v => { if (v) localStorage.setItem('rag_chat_model_id', v); });
+
+    // ---- Auto-load KB stats when switching to kb tab ----
+    watch(activeTab, v => {
+      if (v === 'kb' && kbs.value.length > 0) loadAllKbStats();
+    });
 
     // ---- API helpers ----
     const buildHeaders = () => {
-      const h = { 'Content-Type': 'application/json' };
+      const h = {
+        'Content-Type': 'application/json',
+        'X-Language': currentLang.value,
+      };
       if (authToken.value) h['token'] = authToken.value;
       return h;
     };
 
     const apiFetch = async (path, options = {}) => {
-      const url = apiBase.value + path;
-      const res = await fetch(url, {
+      const res = await fetch(apiBase.value + path, {
         ...options,
         headers: { ...buildHeaders(), ...(options.headers || {}) },
       });
@@ -394,22 +849,21 @@ createApp({
 
     // ---- Health check ----
     const checkHealth = async () => {
+      healthStatus.value = 'checking';
       try {
         const data = await apiFetch('/api/health');
         if (data.status === 'ok') {
           const parts = [];
-          if (data.db) parts.push('DB');
-          if (data.redis) parts.push('Redis');
+          if (data.db)          parts.push('DB');
+          if (data.redis)       parts.push('Redis');
           if (data.meilisearch) parts.push('MS');
-          healthText.value = parts.join(' · ') + ' OK';
-          healthColor.value = 'text-green-600 border-green-200 bg-green-50';
+          healthParts.value  = parts;
+          healthStatus.value = 'ok';
         } else {
-          healthText.value = '服务异常';
-          healthColor.value = 'text-red-500 border-red-200 bg-red-50';
+          healthStatus.value = 'error';
         }
       } catch {
-        healthText.value = '连接失败';
-        healthColor.value = 'text-red-500 border-red-200 bg-red-50';
+        healthStatus.value = 'failed';
       }
     };
 
@@ -418,6 +872,12 @@ createApp({
       try {
         const res = await apiFetch('/api/rag/kb?page=1&size=100');
         kbs.value = res.data?.list || [];
+        const saved = Number(localStorage.getItem('rag_chat_kb_id'));
+        if (saved && kbs.value.find(k => k.id === saved)) {
+          chatKbId.value = saved;
+        } else if (!chatKbId.value && kbs.value.length > 0) {
+          chatKbId.value = kbs.value[0].id;
+        }
       } catch (e) {
         console.error('Failed to load KBs', e);
       }
@@ -428,6 +888,12 @@ createApp({
       try {
         const res = await apiFetch('/api/llm/model?page=1&size=100');
         models.value = res.data?.list || [];
+        const saved = localStorage.getItem('rag_chat_model_id');
+        if (saved && models.value.find(m => m.model_id === saved)) {
+          chatModelId.value = saved;
+        } else if (!chatModelId.value && models.value.length > 0) {
+          chatModelId.value = models.value[0].model_id;
+        }
       } catch (e) {
         console.error('Failed to load models', e);
       }
@@ -437,9 +903,7 @@ createApp({
     const loadKbStats = async (kbId) => {
       try {
         const res = await apiFetch(`/api/rag/kb/${kbId}/stats`);
-        if (res.data) {
-          kbStats.value = { ...kbStats.value, [kbId]: res.data };
-        }
+        if (res.data) kbStats.value = { ...kbStats.value, [kbId]: res.data };
       } catch (e) {
         console.error('Failed to load KB stats', e);
       }
@@ -447,6 +911,12 @@ createApp({
 
     const loadAllKbStats = async () => {
       await Promise.all(kbs.value.map(kb => loadKbStats(kb.id)));
+    };
+
+    // ---- KB → Chat shortcut ----
+    const goToChat = (kbId) => {
+      chatKbId.value = kbId;
+      activeTab.value = 'chat';
     };
 
     // ---- Search ----
@@ -466,7 +936,7 @@ createApp({
         searchResults.value = res.data || null;
       } catch (e) {
         console.error('Search failed', e);
-        alert('搜索失败: ' + e.message);
+        alert(ui.value.searchFailed + e.message);
       } finally {
         searchLoading.value = false;
       }
@@ -480,8 +950,8 @@ createApp({
     };
 
     const clearChat = () => {
-      chatMessages.value = [];
-      ragChunks.value = [];
+      chatMessages.value   = [];
+      ragChunks.value      = [];
       conversationId.value = null;
     };
 
@@ -490,12 +960,12 @@ createApp({
       if (!text || !chatKbId.value || !chatModelId.value || chatLoading.value) return;
 
       chatInput.value = '';
-      chatMessages.value.push({ role: 'user', content: text });
+      chatMessages.value.push({ role: 'user', content: text, time: nowTime() });
       scrollToBottom();
 
-      const assistantMsg = reactive({ role: 'assistant', content: '', thinking: '' });
+      const assistantMsg = reactive({ role: 'assistant', content: '', thinking: '', streaming: true, time: nowTime() });
       chatMessages.value.push(assistantMsg);
-      ragChunks.value = [];
+      ragChunks.value   = [];
       chatLoading.value = true;
 
       try {
@@ -513,12 +983,12 @@ createApp({
         });
 
         if (!response.ok) {
-          const errText = await response.text();
-          assistantMsg.content = `[HTTP ${response.status}] ${errText}`;
+          assistantMsg.content   = `[HTTP ${response.status}] ${await response.text()}`;
+          assistantMsg.streaming = false;
           return;
         }
 
-        const reader = response.body.getReader();
+        const reader  = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
@@ -528,7 +998,7 @@ createApp({
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          buffer = lines.pop(); // keep incomplete last line
+          buffer = lines.pop();
 
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
@@ -537,37 +1007,38 @@ createApp({
 
             try {
               const parsed = JSON.parse(raw);
-              if (parsed.type === 'metadata') {
-                conversationId.value = parsed.conversation_id;
-              } else if (parsed.type === 'thinking') {
-                assistantMsg.thinking += parsed.content;
+              if (parsed !== null && typeof parsed === 'object') {
+                if (parsed.type === 'metadata') {
+                  conversationId.value = parsed.conversation_id;
+                } else if (parsed.type === 'thinking') {
+                  assistantMsg.thinking += parsed.content;
+                  scrollToBottom();
+                } else if (parsed.type === 'search_results') {
+                  ragChunks.value = (parsed.chunks || []).map(c => reactive({ ...c, expanded: false }));
+                } else if (parsed.type === 'error') {
+                  assistantMsg.content += `\n${ui.value.errorMsg}: ${parsed.message}`;
+                }
+              } else {
+                assistantMsg.content += raw;
                 scrollToBottom();
-              } else if (parsed.type === 'search_results') {
-                ragChunks.value = parsed.chunks || [];
-              } else if (parsed.type === 'error') {
-                assistantMsg.content += `\n[错误: ${parsed.message}]`;
               }
-              // other typed events (thinking_complete, case_selection) ignored
             } catch {
-              // Plain text token
-              assistantMsg.content += raw;
+              assistantMsg.content += raw.replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
               scrollToBottom();
             }
           }
         }
       } catch (e) {
-        assistantMsg.content = '[请求失败] ' + e.message;
+        assistantMsg.content = ui.value.requestFailed + ' ' + e.message;
       } finally {
-        chatLoading.value = false;
+        assistantMsg.streaming = false;
+        chatLoading.value      = false;
         scrollToBottom();
       }
     };
 
     // ---- Utils ----
-    const formatScore = (v) => {
-      if (v == null) return '-';
-      return Number(v).toFixed(4);
-    };
+    const formatScore = (v) => v == null ? '-' : Number(v).toFixed(4);
 
     const formatChars = (n) => {
       if (!n) return '0';
@@ -575,25 +1046,18 @@ createApp({
       return n.toString();
     };
 
+    const normalizeScore = (score, list) => {
+      if (!list || list.length === 0) return 0;
+      const max = Math.max(...list.map(i => i.score || 0));
+      if (!max) return 0;
+      return Math.min((score / max) * 100, 100);
+    };
+
     const reload = async () => {
-      localStorage.setItem('rag_api_base', apiBase.value);
+      localStorage.setItem('rag_api_base',   apiBase.value);
       localStorage.setItem('rag_auth_token', authToken.value);
       await Promise.all([checkHealth(), loadKbList(), loadModels()]);
       if (activeTab.value === 'kb') await loadAllKbStats();
-    };
-
-    // Load KB stats when switching to KB tab
-    const watchTab = (newTab) => {
-      if (newTab === 'kb' && kbs.value.length > 0) {
-        loadAllKbStats();
-      }
-    };
-
-    // Watch activeTab changes
-    const origActiveTab = activeTab;
-    const setActiveTab = (v) => {
-      activeTab.value = v;
-      watchTab(v);
     };
 
     onMounted(async () => {
@@ -601,25 +1065,19 @@ createApp({
     });
 
     return {
-      apiBase, authToken, tabs,
-      activeTab, healthText, healthColor,
+      currentLang, ui, toggleLang,
+      apiBase, authToken, tabs, activeTab, healthText, healthColor,
       kbs, models,
       searchKbId, searchQuery, searchTopK, searchThreshold, searchLoading, searchResults,
       doSearch,
       chatKbId, chatModelId, chatTopK, chatThreshold,
       chatMessages, chatInput, chatLoading, chatScroll,
       ragChunks, sendMessage, clearChat,
+      configOpen, chatKbName, chatModelName,
       kbStats, loadKbStats, loadKbList,
-      formatScore, formatChars, reload,
+      formatScore, formatChars, normalizeScore, reload,
+      renderMarkdown, handleChatClick, goToChat,
     };
-  },
-
-  watch: {
-    activeTab(v) {
-      if (v === 'kb' && this.kbs.length > 0) {
-        this.kbs.forEach(kb => this.loadKbStats(kb.id));
-      }
-    },
   },
 }).mount('#app');
 </script>

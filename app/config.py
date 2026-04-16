@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Default model
     DEFAULT_MODEL_ID: str = ""
 
+    # i18n: model used for query translation (should be a fast/cheap model)
+    # Format: "api_type#model_id", e.g. "anthropic#claude-haiku-4-5-20251001"
+    # Leave empty to disable query translation (non-zh queries will search as-is)
+    TRANSLATION_MODEL: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

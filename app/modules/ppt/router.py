@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.response_wrapper import R
-from app.middleware.request_context import get_current_user_id
+from app.middleware.request_context import get_current_user_id, get_current_language
 from app.modules.ppt.handlers.chat_stream import handle_ppt_stream
 from app.modules.ppt.handlers.sse_stream import SSEStream, create_sse_response
 from app.modules.ppt.handlers.rag_query.orchestrator import RagQueryOrchestrator
@@ -42,6 +42,7 @@ async def ppt_stream_chat(
 async def ppt_rag_query(
     body: dict,
     user_id: int = Depends(get_current_user_id),
+    language: str = Depends(get_current_language),
 ):
     """RAG-enhanced query endpoint (SSE)."""
     conversation_id = body.get("conversation_id")
@@ -87,7 +88,7 @@ async def ppt_rag_query(
         config=config,
     )
 
-    asyncio.create_task(orchestrator.execute(kb_ids, message, model_config))
+    asyncio.create_task(orchestrator.execute(kb_ids, message, model_config, language=language))
 
     return create_sse_response(stream)
 

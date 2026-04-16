@@ -40,6 +40,10 @@ class RequestContext:
     def session_id():
         return RequestContext.get("session_id")
 
+    @staticmethod
+    def language() -> str:
+        return RequestContext.get("language", "zh-CN")
+
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -47,6 +51,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             {
                 "request_id": str(uuid4()),
                 "user_id": getattr(request.state, "user_id", None),
+                "language": request.headers.get("X-Language", "zh-CN"),
             }
         )
         response = await call_next(request)
@@ -56,3 +61,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 def get_current_user_id() -> int:
     """FastAPI dependency that returns the current user_id from request context."""
     return RequestContext.user_id()
+
+
+def get_current_language() -> str:
+    """FastAPI dependency that returns the current request language."""
+    return RequestContext.get("language", "zh-CN")

@@ -3,7 +3,8 @@
     "allow": [
       "Bash(curl -N -s -X POST \"http://localhost:4001/api/llm/chat/$CHAT_ID/stream\" -H \"Content-Type: application/json\" -d \"{\"\"model\"\":\"\"ark#ep-m-20260105214053-9g6v5\"\",\"\"message\"\":\"\"\\\\u4f60\\\\u597d\\\\uff0c\\\\u7528\\\\u4e00\\\\u53e5\\\\u8bdd\\\\u4ecb\\\\u7ecd Python \\\\u8bed\\\\u8a00\"\"}\")",
       "Read(//d/projects/liuzong/data/GUIFANKU/**)",
-      "Bash(curl -s \"http://localhost:4001/api/rag/kb?page=1&size=20\")"
+      "Bash(curl -s \"http://localhost:4001/api/rag/kb?page=1&size=20\")",
+      "Bash(awk '{print $2}')"
     ]
   }
 }

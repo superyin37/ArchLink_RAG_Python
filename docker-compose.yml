@@ -31,6 +31,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./database:/app/database
+      - ./static:/app/static
     depends_on:
       mysql:
         condition: service_healthy
