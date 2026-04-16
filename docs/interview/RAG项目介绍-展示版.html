@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>建筑设计 AI 助手 — RAG 子系统介绍</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --muted: #555;
+    --border: #e0e0e0;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --green-bg: #d4edda;
+    --green-border: #155724;
+    --yellow-bg: #fff3cd;
+    --yellow-border: #856404;
+    --code-bg: #f5f5f5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    color: var(--fg);
+    background: var(--bg);
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 12px;
+  }
+  h2 {
+    font-size: 1.35rem;
+    margin-top: 48px;
+    margin-bottom: 16px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h3 { font-size: 1.1rem; margin-top: 28px; margin-bottom: 10px; }
+  h4 { font-size: 1rem; margin-top: 20px; margin-bottom: 8px; }
+  p { margin-bottom: 12px; }
+  blockquote {
+    border-left: 4px solid var(--accent);
+    padding: 8px 16px;
+    margin: 12px 0 20px;
+    color: var(--muted);
+    background: var(--accent-light);
+    border-radius: 0 6px 6px 0;
+  }
+  blockquote strong { color: var(--fg); }
+  ul, ol { margin: 8px 0 12px 24px; }
+  li { margin-bottom: 4px; }
+  code {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 0.92rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #f8f9fa;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tr:nth-child(even) { background: #fafafa; }
+  .highlight-num {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .mermaid-wrapper {
+    margin: 20px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .mermaid {
+    display: inline-block;
+    text-align: left;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+  .badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .note-box {
+    background: var(--yellow-bg);
+    border-left: 4px solid var(--yellow-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .success-box {
+    background: var(--green-bg);
+    border-left: 4px solid var(--green-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  @media print {
+    body { max-width: 100%; padding: 20px; }
+    h2 { page-break-before: auto; }
+    table { font-size: 0.85rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>建筑设计 AI 助手 — RAG 子系统介绍</h1>
+<blockquote>
+  涵盖范围：<strong>仅 RAG 子系统</strong>（不含 PPT 生成模块）<br>
+  我的角色：RAG 整条管线的实质 owner（流程设计 + 效果改进）
+</blockquote>
+
+<hr>
+
+<!-- ===== 一、一页速览 ===== -->
+<h2>一、一页速览</h2>
+<table>
+  <tr><th>维度</th><th>内容</th></tr>
+  <tr><td><strong>产品</strong></td><td>建筑设计全能 AI 助手，对话场景下根据问题类型自动启用 RAG</td></tr>
+  <tr><td><strong>RAG 触发场景</strong></td><td>① 推荐案例 ② 建筑规范 ③ 其他专业知识 — 三类问题路由到对应知识库</td></tr>
+  <tr><td><strong>我的角色</strong></td><td>团队成员；外包负责整体框架，<strong>RAG 模块由我重写并主导</strong></td></tr>
+  <tr><td><strong>核心成果</strong></td><td>通过对照实验把向量召回 TOP5 命中率从 <span class="highlight-num">4% 提升到 96%</span>；Hybrid TOP1 准确率从 <span class="highlight-num">60% 提升到 100%</span></td></tr>
+  <tr><td><strong>覆盖工作</strong></td><td>PDF→Markdown、LLM 辅助结构化、切片策略、入库过滤、Embedding 选型、Hybrid 检索调参、上下文组装</td></tr>
+  <tr><td><strong>当前在做</strong></td><td>系统化评测体系建设（金标集 + 自动化回归）</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 二、业务背景与挑战 ===== -->
+<h2>二、业务背景与挑战</h2>
+
+<h3>2.1 产品定位</h3>
+<p>建筑设计师在做方案、汇报、客户沟通时存在大量专业知识检索需求。本系统是公司内部的"建筑设计全能 AI 助手"，对话页面与 PPT 生成页面双入口。</p>
+
+<h3>2.2 RAG 在对话中的触发</h3>
+<p>对话场景下系统识别用户意图，命中以下三类时启用 RAG：</p>
+<ul>
+  <li><strong>推荐案例</strong>：从历史项目案例库召回相似设计</li>
+  <li><strong>建筑规范</strong>：查询 GB / JGJ / TB 系列规范条款</li>
+  <li><strong>其他专业知识</strong>：材料、工艺、构造做法等</li>
+</ul>
+<p>每类问题路由到对应知识库，避免跨域噪声。</p>
+
+<h3>2.3 这个场景的特殊难点</h3>
+<table>
+  <tr><th>难点</th><th>影响</th></tr>
+  <tr><td><strong>长 PDF + 大量表格 / 图片</strong></td><td>表格常以图片形式存储，BM25 与向量都拿不到表内数值</td></tr>
+  <tr><td><strong>专业术语 + 规范编号</strong>（如 GB 50108-2008）</td><td>通用 embedding 对编号区分度差；语义相近的不同规范容易混淆</td></tr>
+  <tr><td><strong>单领域语料</strong></td><td>后面会讲到的"向量空间各向异性"问题在这里特别明显</td></tr>
+  <tr><td><strong>答案要求精确可追溯</strong></td><td>设计师要引用条款，不能给"差不多对"的回答；对幻觉零容忍</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 三、角色与责任划界 ===== -->
+<h2>三、我的角色与责任划界</h2>
+<table>
+  <tr><th>圈层</th><th>范围</th></tr>
+  <tr><td><strong>Owner（主导）</strong></td><td>RAG 整条管线：PDF→Markdown、LLM 辅助清洗、切片策略、入库过滤、Embedding 模型选型、检索逻辑、上下文组装、效果评测</td></tr>
+  <tr><td><strong>熟悉（能改、能 debug）</strong></td><td>LLM 模块的调用编排、SSE 流式、检索-生成衔接联调</td></tr>
+  <tr><td><strong>了解（能讲清原理）</strong></td><td>部署运维、前端、PPT 模块（由其他成员负责）</td></tr>
+</table>
+<blockquote>项目整体框架由外包团队搭建，<strong>RAG 模块基本由我重写并持续迭代</strong>。</blockquote>
+
+<hr>
+
+<!-- ===== 四、系统架构总览 ===== -->
+<h2>四、系统架构总览</h2>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart TB
+    User[用户对话] --> Router{意图路由}
+    Router -->|案例| KB1[(案例知识库)]
+    Router -->|规范| KB2[(规范知识库)]
+    Router -->|其他| KB3[(专业知识库)]
+
+    KB1 & KB2 & KB3 --> Retrieval[RAG 检索管线]
+    Retrieval --> Context[上下文组装]
+    Context --> LLM[LLM 生成]
+    LLM --> Response[流式回答 SSE]
+
+    subgraph 数据层
+      LanceDB[(LanceDB 向量索引)]
+      Meili[(Meilisearch 全文索引)]
+      MySQL[(MySQL 元数据)]
+    end
+
+    KB1 -.-> LanceDB
+    KB1 -.-> Meili
+    KB2 -.-> LanceDB
+    KB2 -.-> Meili
+    KB3 -.-> LanceDB
+    KB3 -.-> Meili
+</pre>
+</div>
+
+<p><strong>技术栈</strong>：FastAPI（async）+ SQLAlchemy 2.0 + MySQL + <strong>LanceDB</strong>（向量）+ <strong>Meilisearch</strong>（全文）+ Redis（缓存/限流）+ Qwen text-embedding-v4（embedding）+ Qwen-plus（生成）。</p>
+
+<hr>
+
+<!-- ===== 五、数据处理流水线 ===== -->
+<h2>五、RAG 数据处理流水线</h2>
+
+<h3>5.1 流水线总览</h3>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart LR
+    A[原始 PDF] --> B[PDF→Markdown 解析]
+    B --> C[LLM 辅助结构化与摘要]
+    C --> D[树结构切片]
+    D --> E[入库前过滤]
+    E --> F[Embedding 编码]
+    F --> G[(LanceDB)]
+    E --> H[(Meilisearch)]
+
+    style E fill:#fff3cd,stroke:#856404
+    style C fill:#fff3cd,stroke:#856404
+</pre>
+</div>
+
+<h3>5.2 关键步骤</h3>
+
+<h4>Step 1 · PDF → Markdown</h4>
+<p>建筑规范多为长 PDF，直接做向量化效果差。先转 Markdown 保留章节层级（<code># / ##</code> 对应规范的章/节/条），方便后续按结构切片。</p>
+
+<h4>Step 2 · LLM 辅助结构化与摘要</h4>
+<ul>
+  <li>用 LLM 对原始转换结果做二次清洗（修正章节编号、补全条文说明的层级、去除页眉页脚噪声）</li>
+  <li>为每个章节生成简短摘要，作为 chunk 元数据辅助检索</li>
+</ul>
+<p>直接的 PDF→MD 转换会丢失编号层级（"3.2.1" 可能被识别成普通段落），LLM 能基于上下文恢复结构。</p>
+
+<h4>Step 3 · 树结构切片</h4>
+<p>按 Markdown 标题层级构建 TreeNode 树，材料化路径 <code>0001/0002/0003</code> 保留父子关系 → 检索时可做兄弟/子节点扩展。</p>
+
+<h4>Step 4 · 入库前过滤 <span class="badge">迭代改进</span></h4>
+<div class="note-box">
+  <strong>问题发现</strong>：测试时反复看到检索结果里出现"3.2.1"、"概述"这类纯标题或十几字的极短 chunk，挤占 top_k 名额且对回答无价值。
+</div>
+<p><strong>诊断</strong>：</p>
+<ul>
+  <li>切片器对短章节会产出仅含标题的 chunk</li>
+  <li>表格被切碎后产生大量碎片</li>
+  <li>部分文档存在长串英文标识符块</li>
+</ul>
+<p><strong>方案</strong>：在 embedding 入库前加一道过滤层，按以下规则丢弃：</p>
+<ul>
+  <li>内容长度 &lt; 阈值</li>
+  <li>仅包含标题、编号、纯英文 token</li>
+  <li>信息密度过低（重复字符比例高）</li>
+</ul>
+<div class="success-box"><strong>效果</strong>：top_k 命中名额留给真正有内容的 chunk，召回质量明显提升。</div>
+
+<h4>Step 5 · 双索引</h4>
+<p>同一批 chunk 同时写入 LanceDB（向量）与 Meilisearch（全文），为后续 Hybrid 检索打基础。</p>
+
+<hr>
+
+<!-- ===== 六、检索流水线 ===== -->
+<h2>六、RAG 检索流水线</h2>
+
+<h3>6.1 检索流程</h3>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart TB
+    Q[Query] --> V[向量检索 LanceDB]
+    Q --> F[全文检索 Meilisearch]
+    V --> Fusion{RRF 融合}
+    F --> Fusion
+    Fusion --> Dedup[去重]
+    Dedup --> Threshold[动态阈值过滤]
+    Threshold --> Enhance[召回增强]
+    Enhance --> Limit[Token 预算限流]
+    Limit --> Assemble[树上下文组装]
+    Assemble --> Out[最终 Context]
+
+    style Fusion fill:#d4edda,stroke:#155724
+    style Enhance fill:#d4edda,stroke:#155724
+</pre>
+</div>
+
+<h3>6.2 关键设计与 Trade-off</h3>
+<table>
+  <tr><th>设计点</th><th>选型</th><th>Trade-off</th></tr>
+  <tr><td><strong>Hybrid 检索</strong></td><td>向量 + 全文 RRF 融合</td><td>向量擅长语义、全文擅长术语（"GB 50108"必须命中）；RRF 不依赖分数尺度，比 weighted 更稳健</td></tr>
+  <tr><td><strong>召回增强</strong></td><td>命中后回取兄弟 / 子节点</td><td>命中"3.2.1 防火等级"时自动带上 3.2.2、3.2.3 与父节"3.2 防火设计"，回答更完整；代价是上下文变长，由 Token Limiter 兜底</td></tr>
+  <tr><td><strong>去重三级</strong></td><td>ID / 内容相似度 / 父子</td><td>Hybrid 召回容易产生父节点+子节点同时进上下文的冗余</td></tr>
+  <tr><td><strong>动态阈值</strong></td><td>按当前查询的分数分布自适应</td><td>固定阈值在不同查询表现差异大，自适应避免"严格漏召回 / 宽松噪声多"两难</td></tr>
+  <tr><td><strong>Token 预算优于条数</strong></td><td>按 token 控制上下文长度</td><td>LLM context 是 token 限制；按 chunk 数控制不准确</td></tr>
+  <tr><td><strong>树状上下文组装</strong></td><td>拼接时保留标题路径</td><td>LLM 更容易判断引用准确性，回答时能带上"《xxx规范》3.2.1"这样的源</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 七、Embedding 选型实验 ===== -->
+<h2>七、关键案例 — Embedding 模型选型实验</h2>
+<blockquote>体现"发现问题 → 根因诊断 → 对照实验 → 决策落地"完整闭环。</blockquote>
+
+<h3>7.1 背景</h3>
+<p>线上初版用 <strong>doubao-embedding-large-text-250515</strong>（2048 维）。测试时发现：所有规范类查询的 cosine 分数都虚高在 <strong>0.87 ~ 0.92</strong>，正确 chunk 与无关 chunk 的分数几乎相同，<strong>threshold 调高漏召回，调低噪声爆炸</strong>。</p>
+
+<h3>7.2 根因诊断 — 向量空间各向异性</h3>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart LR
+    A[单领域语料] --> B[向量向同一方向聚集]
+    B --> C[cosine 相似度普遍虚高]
+    C --> D[正确与噪声无法区分]
+</pre>
+</div>
+<p>学术上叫 <strong>anisotropy</strong>：在窄领域语料下，embedding 模型产出的向量在空间中并非各向同性分布，而是聚集到一个方向，导致 cosine 距离失去区分能力。</p>
+
+<h3>7.3 尝试方案 — All-but-the-Top 后处理</h3>
+<p><strong>方法</strong>：去除向量的前 N 个主成分（PCA），消除主导方向。</p>
+<p><strong>结果</strong>：绝对分数从 0.87 降到 0.30 左右，看似合理，但 <strong>Score Spread（正确 chunk 分数 − TOP1 噪声分数）≈ 0</strong> — 排序完全无意义。降阈值后精确率崩溃。</p>
+<p><strong>结论</strong>：AbTT 是缓解手段，不能真正建立区分度。</p>
+
+<h3>7.4 最终方案 — 切换到 Qwen text-embedding-v4</h3>
+<p>1024 维，向量空间天然各向同性，<strong>无需任何后处理</strong>即可使用。</p>
+
+<h3>7.5 对照实验结果</h3>
+<p>5 道金标题（建筑规范类问题，已知正确答案文档），固定 top_k=5、threshold=0.0、RRF(0.7/0.3)：</p>
+<table>
+  <tr><th>指标</th><th>Doubao + AbTT</th><th>Qwen v4</th></tr>
+  <tr><td>向量 TOP5 命中（满分 25）</td><td>1 / 25 (4%)</td><td><span class="highlight-num">24 / 25 (96%)</span></td></tr>
+  <tr><td>Hybrid TOP1 准确率（满分 5）</td><td>3 / 5 (60%)</td><td><span class="highlight-num">5 / 5 (100%)</span></td></tr>
+  <tr><td>Score Spread</td><td>≈ 0</td><td><span class="highlight-num">&gt; +0.5</span></td></tr>
+  <tr><td>是否需要后处理</td><td>必须</td><td>不需要</td></tr>
+  <tr><td>LLM 端到端回答准确率</td><td>N/A</td><td><span class="highlight-num">5 / 5</span></td></tr>
+</table>
+
+<h3>7.6 沉淀的方法论</h3>
+<p>为后续 embedding 选型固化了一套评测套路：</p>
+<ul>
+  <li>自定义 <strong>Score Spread 指标</strong>（正确 chunk 与 TOP1 噪声的分数差）替代单纯的命中率</li>
+  <li>三层观察：纯向量 / 纯全文 / Hybrid，分别看模型在不同路径的表现</li>
+  <li>端到端跑通 LLM 回答，避免"召回好但答不对"的伪指标</li>
+</ul>
+
+<hr>
+
+<!-- ===== 八、贡献清单 ===== -->
+<h2>八、我的具体贡献清单</h2>
+<table>
+  <tr><th>方向</th><th>我做了什么</th></tr>
+  <tr><td><strong>数据处理</strong></td><td>PDF→Markdown 流水线设计；LLM 辅助章节结构化与摘要生成</td></tr>
+  <tr><td><strong>切片策略</strong></td><td>树结构切片器；入库前短块/标题块过滤层（迭代发现并修复）</td></tr>
+  <tr><td><strong>Embedding 选型</strong></td><td>设计对照实验；定义 Score Spread 指标；诊断各向异性问题；从 Doubao 切换到 Qwen v4</td></tr>
+  <tr><td><strong>检索逻辑</strong></td><td>Hybrid 检索 + RRF 融合调参；召回增强策略落地；上下文组装重构（树结构 + 标题路径）</td></tr>
+  <tr><td><strong>检索调参</strong></td><td>top_k、threshold、融合权重在不同 KB 上的调优</td></tr>
+  <tr><td><strong>效果评测</strong></td><td>设计金标题集；端到端跑通"召回 → 上下文 → LLM 回答"全链路评估</td></tr>
+  <tr><td><strong>联调与排障</strong></td><td>跨模块联调（RAG → LLM）；Bug 定位与修复</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 九、当前局限与改进 ===== -->
+<h2>九、当前局限与下一步改进</h2>
+
+<h3>9.1 评测体系不足（首要改进）</h3>
+<p><strong>现状</strong>：</p>
+<ul>
+  <li>金标题仅 5 道，统计意义有限</li>
+  <li>评估靠"LLM 判断 + 人工兜底"，未引入 RAGAS 等标准化指标</li>
+  <li>没有 CI 回归机制，调参后只能跑一次手工对比</li>
+</ul>
+<p><strong>计划</strong>：</p>
+<ul>
+  <li>扩充金标集到 30+ 题，覆盖三类业务场景</li>
+  <li>引入 <strong>RAGAS</strong> 指标：faithfulness、context_precision、context_recall</li>
+  <li>把评测脚本化，PR 触发自动跑回归，建立"调参 → 评测 → 决策"闭环</li>
+  <li>沉淀 Bad Case 库，定期复盘</li>
+</ul>
+
+<h3>9.2 表格与图片的结构性缺陷</h3>
+<p><strong>问题</strong>：测试中暴露的痛点 — 部分关键数值以<strong>图片表格</strong>形式存储，BM25 和向量都检索不到。</p>
+<p><strong>计划</strong>：</p>
+<ul>
+  <li>引入 PDF 布局解析（PP-StructureV2 / Marker / unstructured）</li>
+  <li>表格 OCR 后结构化为 Markdown 重新入库</li>
+  <li>图表生成自然语言描述作为辅助索引</li>
+</ul>
+
+<h3>9.3 检索召回质量</h3>
+<ul>
+  <li><strong>Cross-Encoder 重排</strong>：在 Hybrid 后引入 <code>bge-reranker-v2-m3</code> 做精排</li>
+  <li><strong>查询改写</strong>：Multi-Query / HyDE 处理表述差异大的问题</li>
+  <li><strong>领域微调</strong>：评估对 Qwen embedding 做建筑领域 LoRA 微调的 ROI</li>
+</ul>
+
+<h3>9.4 工程化</h3>
+<ul>
+  <li>后台任务队列替换 BackgroundTasks（文档处理重启不丢）</li>
+  <li>OpenTelemetry 接入，把 search → fusion → rerank → LLM 串成单条 trace</li>
+  <li>嵌入层抽象为工厂，方便后续按 KB 切换 embedder</li>
+</ul>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { useMaxWidth: true, htmlLabels: true } });</script>
+</body>
+</html>

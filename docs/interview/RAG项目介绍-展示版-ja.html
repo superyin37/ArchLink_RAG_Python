@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>建築設計 AI アシスタント — RAG サブシステム紹介</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --muted: #555;
+    --border: #e0e0e0;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --green-bg: #d4edda;
+    --green-border: #155724;
+    --yellow-bg: #fff3cd;
+    --yellow-border: #856404;
+    --code-bg: #f5f5f5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+    line-height: 1.7;
+    color: var(--fg);
+    background: var(--bg);
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 12px;
+  }
+  h2 {
+    font-size: 1.35rem;
+    margin-top: 48px;
+    margin-bottom: 16px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h3 { font-size: 1.1rem; margin-top: 28px; margin-bottom: 10px; }
+  h4 { font-size: 1rem; margin-top: 20px; margin-bottom: 8px; }
+  p { margin-bottom: 12px; }
+  blockquote {
+    border-left: 4px solid var(--accent);
+    padding: 8px 16px;
+    margin: 12px 0 20px;
+    color: var(--muted);
+    background: var(--accent-light);
+    border-radius: 0 6px 6px 0;
+  }
+  blockquote strong { color: var(--fg); }
+  ul, ol { margin: 8px 0 12px 24px; }
+  li { margin-bottom: 4px; }
+  code {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 0.92rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #f8f9fa;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tr:nth-child(even) { background: #fafafa; }
+  .highlight-num {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .mermaid-wrapper {
+    margin: 20px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .mermaid {
+    display: inline-block;
+    text-align: left;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+  .badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .note-box {
+    background: var(--yellow-bg);
+    border-left: 4px solid var(--yellow-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .success-box {
+    background: var(--green-bg);
+    border-left: 4px solid var(--green-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  @media print {
+    body { max-width: 100%; padding: 20px; }
+    h2 { page-break-before: auto; }
+    table { font-size: 0.85rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>建築設計 AI アシスタント — RAG サブシステム紹介</h1>
+<blockquote>
+  対象範囲：<strong>RAG サブシステムのみ</strong>（PPT 生成モジュールは含みません）<br>
+  私の役割：RAG パイプライン全体の実質的なオーナー（フロー設計 + 精度改善）
+</blockquote>
+
+<hr>
+
+<!-- ===== 一、1ページで分かる概要 ===== -->
+<h2>一、1ページで分かる概要</h2>
+<table>
+  <tr><th>項目</th><th>内容</th></tr>
+  <tr><td><strong>プロダクト</strong></td><td>建築設計向けの総合 AI アシスタント。対話シーンでは質問の種類に応じて自動で RAG を有効化</td></tr>
+  <tr><td><strong>RAG の発火場面</strong></td><td>① 類似事例の推薦 ② 建築基準・規範 ③ その他の専門知識 — 3 種類の質問をそれぞれ対応するナレッジベースにルーティング</td></tr>
+  <tr><td><strong>私の役割</strong></td><td>チームメンバー。全体フレームワークは外部委託側が担当し、<strong>RAG モジュールは私が全面的に書き直して主導</strong></td></tr>
+  <tr><td><strong>主な成果</strong></td><td>比較実験により、ベクトル検索の TOP5 ヒット率を <span class="highlight-num">4% から 96% に改善</span>。Hybrid TOP1 正答率は <span class="highlight-num">60% から 100% に改善</span></td></tr>
+  <tr><td><strong>担当範囲</strong></td><td>PDF→Markdown、LLM による構造化補助、チャンク分割戦略、登録前フィルタ、Embedding 選定、Hybrid 検索の調整、コンテキスト組み立て</td></tr>
+  <tr><td><strong>現在進めていること</strong></td><td>体系的な評価基盤の整備（正解付き評価セット + 自動回帰テスト）</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 二、業務背景と課題 ===== -->
+<h2>二、業務背景と課題</h2>
+
+<h3>2.1 プロダクトの位置付け</h3>
+<p>建築設計者は、提案作成、報告、顧客対応の過程で大量の専門知識検索を必要とする。本システムは社内向けの「建築設計総合 AI アシスタント」で、対話画面と PPT 生成画面の 2 つの入口を持つ。</p>
+
+<h3>2.2 対話内での RAG の発火</h3>
+<p>対話シーンでは、システムがユーザー意図を判定し、以下の 3 種類に該当した場合に RAG を有効化する。</p>
+<ul>
+  <li><strong>類似事例の推薦</strong>：過去のプロジェクト事例集から近い設計案を検索</li>
+  <li><strong>建築基準・規範</strong>：GB / JGJ / TB 系列の規範条文を検索</li>
+  <li><strong>その他の専門知識</strong>：材料、工法、構法など</li>
+</ul>
+<p>質問の種類ごとに対応するナレッジベースへルーティングし、分野横断のノイズを避ける。</p>
+
+<h3>2.3 このシーン特有の難しさ</h3>
+<table>
+  <tr><th>課題</th><th>影響</th></tr>
+  <tr><td><strong>長大な PDF + 多数の表 / 画像</strong></td><td>表が画像として保存されていることが多く、BM25 でもベクトル検索でも表内の数値を取得できない</td></tr>
+  <tr><td><strong>専門用語 + 規範番号</strong>（例：GB 50108-2008）</td><td>汎用 embedding は番号の識別が弱く、意味が近い別規範を取り違えやすい</td></tr>
+  <tr><td><strong>単一ドメインのコーパス</strong></td><td>後述する「ベクトル空間の異方性」の問題が特に出やすい</td></tr>
+  <tr><td><strong>回答には正確さと根拠が必須</strong></td><td>設計者は条文を引用するため、「だいたい合っている」回答では不十分。ハルシネーションは許容できない</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 三、役割と責任範囲 ===== -->
+<h2>三、私の役割と責任範囲</h2>
+<table>
+  <tr><th>区分</th><th>範囲</th></tr>
+  <tr><td><strong>Owner（主担当）</strong></td><td>RAG パイプライン全体：PDF→Markdown、LLM によるクリーニング補助、チャンク分割戦略、登録前フィルタ、Embedding モデル選定、検索ロジック、コンテキスト組み立て、評価</td></tr>
+  <tr><td><strong>実装・デバッグが可能</strong></td><td>LLM モジュールの呼び出しオーケストレーション、SSE ストリーミング、検索と生成の接続部分の結合調整</td></tr>
+  <tr><td><strong>概要を説明できる</strong></td><td>デプロイ運用、フロントエンド、PPT モジュール（他メンバーが担当）</td></tr>
+</table>
+<blockquote>プロジェクト全体のフレームワークは外部委託チームが構築し、<strong>RAG モジュールはほぼ私が書き直して継続的に改善</strong>した。</blockquote>
+
+<hr>
+
+<!-- ===== 四、システム構成の全体像 ===== -->
+<h2>四、システム構成の全体像</h2>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart TB
+    User[ユーザーとの対話] --> Router{意図ルーティング}
+    Router -->|事例| KB1[(事例ナレッジベース)]
+    Router -->|規範| KB2[(規範ナレッジベース)]
+    Router -->|その他| KB3[(専門知識ナレッジベース)]
+
+    KB1 & KB2 & KB3 --> Retrieval[RAG 検索パイプライン]
+    Retrieval --> Context[コンテキスト組み立て]
+    Context --> LLM[LLM 生成]
+    LLM --> Response[SSE ストリーミング回答]
+
+    subgraph データ層
+      LanceDB[(LanceDB ベクトルインデックス)]
+      Meili[(Meilisearch 全文インデックス)]
+      MySQL[(MySQL メタデータ)]
+    end
+
+    KB1 -.-> LanceDB
+    KB1 -.-> Meili
+    KB2 -.-> LanceDB
+    KB2 -.-> Meili
+    KB3 -.-> LanceDB
+    KB3 -.-> Meili
+</pre>
+</div>
+
+<p><strong>技術スタック</strong>：FastAPI（async）+ SQLAlchemy 2.0 + MySQL + <strong>LanceDB</strong>（ベクトル）+ <strong>Meilisearch</strong>（全文）+ Redis（キャッシュ / レート制御）+ Qwen text-embedding-v4（embedding）+ Qwen-plus（生成）。</p>
+
+<hr>
+
+<!-- ===== 五、データ処理パイプライン ===== -->
+<h2>五、RAG データ処理パイプライン</h2>
+
+<h3>5.1 パイプライン全体</h3>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart LR
+    A[元の PDF] --> B[PDF→Markdown 解析]
+    B --> C[LLM による構造化と要約]
+    C --> D[ツリー構造でのチャンク分割]
+    D --> E[登録前フィルタ]
+    E --> F[Embedding エンコード]
+    F --> G[(LanceDB)]
+    E --> H[(Meilisearch)]
+
+    style E fill:#fff3cd,stroke:#856404
+    style C fill:#fff3cd,stroke:#856404
+</pre>
+</div>
+
+<h3>5.2 重要なステップ</h3>
+
+<h4>Step 1 · PDF → Markdown</h4>
+<p>建築規範の文書は長大な PDF が多く、そのままベクトル化しても精度が出にくい。まず Markdown に変換して章・節・条の階層（<code># / ##</code> など）を保持し、後段の構造ベースの分割に使う。</p>
+
+<h4>Step 2 · LLM による構造化と要約の補助</h4>
+<ul>
+  <li>LLM で変換結果を再クリーニングし、章番号の修正、条文説明の階層補完、ヘッダー / フッターのノイズ除去を行う</li>
+  <li>各章に短い要約を付け、chunk のメタデータとして検索を補助する</li>
+</ul>
+<p>単純な PDF→MD 変換では番号階層が崩れやすく（「3.2.1」が通常段落として扱われることがある）、LLM を使うと前後文脈から構造を復元できる。</p>
+
+<h4>Step 3 · ツリー構造でのチャンク分割</h4>
+<p>Markdown の見出し階層から TreeNode を構築し、実体化したパス <code>0001/0002/0003</code> で親子関係を保持する。これにより、検索時に兄弟ノードや子ノードへ拡張できる。</p>
+
+<h4>Step 4 · 登録前フィルタ <span class="badge">改善点</span></h4>
+<div class="note-box">
+  <strong>問題の発見</strong>：テスト中、検索結果に「3.2.1」「概要」のような見出しだけの chunk や、十数文字しかない極端に短い chunk が何度も出てきた。top_k を消費するだけで、回答には寄与しない。
+</div>
+<p><strong>診断</strong>：</p>
+<ul>
+  <li>分割器が短い章から見出しだけの chunk を生成していた</li>
+  <li>表が細かく分断され、大量の断片ができていた</li>
+  <li>一部の文書には長い英数字識別子だけのブロックがあった</li>
+</ul>
+<p><strong>対応</strong>：embedding 登録前にフィルタ層を追加し、次の条件に当てはまる chunk を除外した。</p>
+<ul>
+  <li>内容長がしきい値未満</li>
+  <li>見出し、番号、英字 token のみで構成される</li>
+  <li>情報密度が低い（文字の繰り返し率が高い）</li>
+</ul>
+<div class="success-box"><strong>効果</strong>：top_k を本当に中身のある chunk に使えるようになり、検索の質が明確に向上した。</div>
+
+<h4>Step 5 · 二重インデックス</h4>
+<p>同じ chunk を LanceDB（ベクトル）と Meilisearch（全文）の両方に登録し、後段の Hybrid 検索の土台にした。</p>
+
+<hr>
+
+<!-- ===== 六、検索パイプライン ===== -->
+<h2>六、RAG 検索パイプライン</h2>
+
+<h3>6.1 検索フロー</h3>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart TB
+    Q[Query] --> V[ベクトル検索 LanceDB]
+    Q --> F[全文検索 Meilisearch]
+    V --> Fusion{RRF 融合}
+    F --> Fusion
+    Fusion --> Dedup[重複除去]
+    Dedup --> Threshold[動的しきい値フィルタ]
+    Threshold --> Enhance[検索結果の拡張]
+    Enhance --> Limit[Token 予算で制御]
+    Limit --> Assemble[ツリー型コンテキスト組み立て]
+    Assemble --> Out[最終 Context]
+
+    style Fusion fill:#d4edda,stroke:#155724
+    style Enhance fill:#d4edda,stroke:#155724
+</pre>
+</div>
+
+<h3>6.2 重要な設計とトレードオフ</h3>
+<table>
+  <tr><th>設計ポイント</th><th>採用方式</th><th>トレードオフ</th></tr>
+  <tr><td><strong>Hybrid 検索</strong></td><td>ベクトル + 全文の RRF 融合</td><td>ベクトルは意味に強く、全文検索は用語に強い（「GB 50108」は必ず拾いたい）。RRF はスコア尺度に依存せず、重み付き方式より安定</td></tr>
+  <tr><td><strong>検索結果の拡張</strong></td><td>ヒット後に兄弟 / 子ノードを追加取得</td><td>「3.2.1 防火等級」がヒットしたら、3.2.2、3.2.3 と親節「3.2 防火設計」も自動で付けるため、回答がより完全になる。代わりにコンテキストは長くなるが、Token Limiter で制御する</td></tr>
+  <tr><td><strong>3段階の重複除去</strong></td><td>ID / 内容類似度 / 親子関係</td><td>Hybrid では親ノードと子ノードが同時にコンテキストへ入りやすく、冗長になりやすい</td></tr>
+  <tr><td><strong>動的しきい値</strong></td><td>現在のクエリのスコア分布に応じて適応</td><td>固定しきい値はクエリごとの差が大きく、「厳しすぎて取りこぼす / 緩すぎてノイズが増える」という両立しにくい問題がある</td></tr>
+  <tr><td><strong>chunk 数より token 予算を優先</strong></td><td>token 数でコンテキスト長を制御</td><td>LLM の制約は token ベースであり、chunk 数だけでは正確に制御できない</td></tr>
+  <tr><td><strong>ツリー型コンテキスト組み立て</strong></td><td>連結時に見出しパスを保持</td><td>LLM が出典の正確性を判断しやすくなり、回答時に「『xxx規範』3.2.1」のような形で根拠を示せる</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 七、Embedding モデル選定実験 ===== -->
+<h2>七、主要ケース — Embedding モデル選定実験</h2>
+<blockquote>「問題の発見 → 根本原因の診断 → 比較実験 → 意思決定と実装」までを一通り示せるケース。</blockquote>
+
+<h3>7.1 背景</h3>
+<p>本番初期版では <strong>doubao-embedding-large-text-250515</strong>（2048 次元）を使用していた。テストの結果、規範系クエリの cosine スコアがすべて <strong>0.87 〜 0.92</strong> に偏って高く、正しい chunk と無関係な chunk の差がほぼ出なかった。しきい値を上げると取りこぼし、下げるとノイズが急増する状態だった。</p>
+
+<h3>7.2 根本原因の診断 — ベクトル空間の異方性</h3>
+<div class="mermaid-wrapper">
+<pre class="mermaid">
+flowchart LR
+    A[単一ドメインのコーパス] --> B[ベクトルが同じ方向に集まる]
+    B --> C[cosine 類似度が全体に高く出る]
+    C --> D[正解とノイズを区別できない]
+</pre>
+</div>
+<p>学術的には <strong>anisotropy</strong> と呼ばれる。狭いドメインのコーパスでは、embedding モデルが出力するベクトルが等方的に分布せず、特定方向に偏って集まるため、cosine 距離の識別力が落ちる。</p>
+
+<h3>7.3 試した対応 — All-but-the-Top 後処理</h3>
+<p><strong>方法</strong>：ベクトルの先頭 N 個の主成分（PCA）を除去し、支配的な方向を打ち消す。</p>
+<p><strong>結果</strong>：絶対スコアは 0.87 から 0.30 前後まで下がり、一見まともに見えたが、<strong>Score Spread（正解 chunk のスコア − TOP1 ノイズのスコア）がほぼ 0</strong> のままで、順位付けの意味がなかった。しきい値を下げると適合率は崩れた。</p>
+<p><strong>結論</strong>：AbTT は緩和策にはなるが、識別力そのものは作れない。</p>
+
+<h3>7.4 最終案 — Qwen text-embedding-v4 へ切り替え</h3>
+<p>1024 次元。ベクトル空間がもともと等方的で、<strong>後処理なし</strong>で使えた。</p>
+
+<h3>7.5 比較実験の結果</h3>
+<p>正解文書が既知の建築規範系クエリ 5 問で比較。top_k=5、threshold=0.0、RRF(0.7/0.3) を固定。</p>
+<table>
+  <tr><th>指標</th><th>Doubao + AbTT</th><th>Qwen v4</th></tr>
+  <tr><td>ベクトル TOP5 ヒット数（満点 25）</td><td>1 / 25 (4%)</td><td><span class="highlight-num">24 / 25 (96%)</span></td></tr>
+  <tr><td>Hybrid TOP1 正答率（満点 5）</td><td>3 / 5 (60%)</td><td><span class="highlight-num">5 / 5 (100%)</span></td></tr>
+  <tr><td>Score Spread</td><td>≈ 0</td><td><span class="highlight-num">&gt; +0.5</span></td></tr>
+  <tr><td>後処理の要否</td><td>必須</td><td>不要</td></tr>
+  <tr><td>LLM のエンドツーエンド回答正答率</td><td>N/A</td><td><span class="highlight-num">5 / 5</span></td></tr>
+</table>
+
+<h3>7.6 ここで整理した方法論</h3>
+<p>後続の embedding 選定向けに、次の評価手順を標準化した。</p>
+<ul>
+  <li><strong>Score Spread 指標</strong>（正解 chunk と TOP1 ノイズのスコア差）を定義し、単純なヒット率だけに頼らない</li>
+  <li>3 層で観察する。ベクトル単独 / 全文単独 / Hybrid のそれぞれで挙動を見る</li>
+  <li>LLM の回答まで含めてエンドツーエンドで確認し、「検索は良いが回答は間違う」という見かけの指標を避ける</li>
+</ul>
+
+<hr>
+
+<!-- ===== 八、貢献一覧 ===== -->
+<h2>八、私の具体的な貢献</h2>
+<table>
+  <tr><th>領域</th><th>実施内容</th></tr>
+  <tr><td><strong>データ処理</strong></td><td>PDF→Markdown パイプラインの設計、LLM による章構造化と要約生成</td></tr>
+  <tr><td><strong>チャンク分割戦略</strong></td><td>ツリー構造の分割器、登録前の短い塊 / 見出しのみの塊を除外するフィルタ層（反復の中で発見して改善）</td></tr>
+  <tr><td><strong>Embedding 選定</strong></td><td>比較実験の設計、Score Spread 指標の定義、異方性の診断、Doubao から Qwen v4 への切り替え</td></tr>
+  <tr><td><strong>検索ロジック</strong></td><td>Hybrid 検索 + RRF 融合の調整、検索結果拡張の実装、コンテキスト組み立ての再設計（ツリー構造 + 見出しパス）</td></tr>
+  <tr><td><strong>検索パラメータ調整</strong></td><td>top_k、threshold、融合重みをナレッジベースごとに最適化</td></tr>
+  <tr><td><strong>効果検証</strong></td><td>正解付き評価セットの設計、「検索 → コンテキスト → LLM 回答」のエンドツーエンド評価</td></tr>
+  <tr><td><strong>結合調整と障害対応</strong></td><td>モジュール横断の結合調整（RAG → LLM）、バグの特定と修正</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 九、現状の限界と改善方針 ===== -->
+<h2>九、現状の限界と次の改善</h2>
+
+<h3>9.1 評価基盤の不足（最優先の改善項目）</h3>
+<p><strong>現状</strong>：</p>
+<ul>
+  <li>正解付き評価問題が 5 問しかなく、統計的に弱い</li>
+  <li>評価は「LLM 判定 + 人手の確認」に依存しており、RAGAS などの標準指標を使っていない</li>
+  <li>CI の回帰がなく、パラメータ調整後は毎回手動比較になる</li>
+</ul>
+<p><strong>計画</strong>：</p>
+<ul>
+  <li>正解付き評価セットを 30 問以上まで拡張し、3 つの業務シーンをカバーする</li>
+  <li><strong>RAGAS</strong> 指標を導入する：faithfulness、context_precision、context_recall</li>
+  <li>評価をスクリプト化し、PR を契機に自動回帰を実行して、「調整 → 評価 → 判断」の閉ループを作る</li>
+  <li>Bad Case 集を整備し、定期的に振り返る</li>
+</ul>
+
+<h3>9.2 表と画像に関する構造的な欠陥</h3>
+<p><strong>問題</strong>：テストで見えた痛点として、一部の重要な数値が<strong>画像の表</strong>として保存されており、BM25 でもベクトル検索でも拾えない。</p>
+<p><strong>計画</strong>：</p>
+<ul>
+  <li>PDF レイアウト解析を導入する（PP-StructureV2 / Marker / unstructured）</li>
+  <li>OCR 後の表を Markdown として再構造化し、再登録する</li>
+  <li>図表には自然言語の説明を付け、補助インデックスとして使う</li>
+</ul>
+
+<h3>9.3 検索品質</h3>
+<ul>
+  <li><strong>Cross-Encoder での再ランキング</strong>：Hybrid の後段で <code>bge-reranker-v2-m3</code> を使って再ランキングを行う</li>
+  <li><strong>クエリ書き換え</strong>：Multi-Query / HyDE で表現差の大きい質問を吸収する</li>
+  <li><strong>ドメイン微調整</strong>：Qwen embedding に対する建築ドメイン LoRA 微調整の ROI を評価する</li>
+</ul>
+
+<h3>9.4 エンジニアリング</h3>
+<ul>
+  <li>BackgroundTasks をバックグラウンドジョブキューに置き換え、文書処理が再起動で失われないようにする</li>
+  <li>OpenTelemetry を導入し、search → fusion → rerank → LLM を 1 本の trace で追えるようにする</li>
+  <li>Embedding 層をファクトリ化し、今後は KB ごとに embedder を切り替えやすくする</li>
+</ul>
+
+<script>mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { useMaxWidth: true, htmlLabels: true } });</script>
+</body>
+</html>
